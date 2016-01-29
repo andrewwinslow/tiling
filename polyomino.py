@@ -9,6 +9,23 @@ dir2vec = {'N': (0, 1), 'E': (1, 0), 'S': (0, -1), 'W': (-1, 0)}
 comp = {'N': 'S', 'S': 'N', 'E': 'W', 'W': 'E'}
 vec2dir = {(0, 1): 'N', (1, 0): 'E', (0, -1): 'S', (-1, 0): 'W'}
 
+# Input: a list W of element of A
+# Output: none. Input W has adjacent opposite direction elements removed
+def cancel(W):
+	cancel = True
+	while cancel:
+		cancel = False
+		for i in xrange(len(W)-1):
+			if W[i] == comp[W[i+1]]:
+				del W[i:i+2]
+				cancel = True
+				break
+		if W[-1] == comp[W[0]]:
+			del W[-1]
+			del W[0]
+			cancel = True
+	return W
+
 # Input: a list W of elements of A
 # Output: whether W describes a closed path traversed clockwise 
 # (ends where it begins)

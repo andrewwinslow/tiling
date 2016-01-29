@@ -90,6 +90,10 @@ def admissible_palindrome_factors(P):
 		factors.append(((i-l+n)%n, (i+l)%n))
 	return factors
 
+# Input: a polyomino boundary word
+# Output: whether the polyomino has a quarter-turn tiling
+def has_quarter_turn_tiling(P):
+	pass		
 
 # Input: a polyomino boundary word
 # Output: whether the polyomino has a translation tiling
