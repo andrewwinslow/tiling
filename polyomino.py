@@ -1,5 +1,6 @@
 
 import unittest
+import copy
 
 # The alphabet for the boundary words
 A = {'N', 'E', 'S', 'W'}
@@ -10,20 +11,21 @@ comp = {'N': 'S', 'S': 'N', 'E': 'W', 'W': 'E'}
 vec2dir = {(0, 1): 'N', (1, 0): 'E', (0, -1): 'S', (-1, 0): 'W'}
 
 # Input: a list W of element of A
-# Output: none. Input W has adjacent opposite direction elements removed
+# Output: W with adjacent opposite direction elements removed
 def cancel(W):
+	W = copy.copy(W)
 	cancel = True
-	while cancel:
+	while cancel and len(W) >= 2:
 		cancel = False
-		for i in xrange(len(W)-1):
+		for i in xrange(-1, len(W)-1):
 			if W[i] == comp[W[i+1]]:
-				del W[i:i+2]
+				if i != -1:
+					del W[i:i+2]
+				else:
+					del W[-1]
+					del W[0]
 				cancel = True
 				break
-		if W[-1] == comp[W[0]]:
-			del W[-1]
-			del W[0]
-			cancel = True
 	return W
 
 # Input: a list W of elements of A
@@ -59,6 +61,8 @@ def is_simple(W):
 # Output: whether the boundary word is traversed clockwise
 # Note: helper method
 def is_clockwise(W):
+	if len(W) == 0:
+		return True
 	result = {('N', 'E'): 1, ('N', 'N'): 0, ('N', 'W'): -1, 
 		('E', 'S'): 1, ('E', 'E'): 0, ('E', 'N'): -1, 
 		('S', 'W'): 1, ('S', 'S'): 0, ('S', 'E'): -1, 
@@ -179,6 +183,7 @@ class TestStuff(unittest.TestCase):
 			self.assertTrue(is_polyomino(W[i:] + W[:i]))
 		self.assertTrue(is_polyomino(['N', 'N', 'E', 'S', 'S', 'W']))
 		self.assertTrue(is_polyomino(['N', 'N', 'W', 'N', 'E', 'E', 'S', 'S', 'S', 'S', 'W', 'N']))
+		self.assertTrue(is_polyomino([]))
 		# Isn't clockwise
 		W = ['N', 'W', 'S', 'E']
 		for i in xrange(len(W)):
@@ -218,6 +223,16 @@ class TestStuff(unittest.TestCase):
 		self.assertTrue(W in result)
 		W = ['N', 'E', 'E', 'S', 'W', 'W']
 		self.assertTrue(W in result)
+
+	def test__cancel(self):
+		self.assertEqual(cancel(['S', 'N']), [])
+		self.assertEqual(cancel(['S', 'S', 'N', 'N']), [])
+		self.assertEqual(cancel(['N', 'E', 'N', 'S', 'S', 'W']), ['N', 'E', 'S', 'W'])
+		self.assertEqual(cancel(['S', 'S', 'W', 'N', 'E', 'N']), ['S', 'W', 'N', 'E'])
+		self.assertEqual(cancel(['N', 'E', 'N', 'S', 'S', 'E', 'W', 'W']), ['N', 'E', 'S', 'W'])
+		W = ['N', 'S']
+		cancel(W)
+		self.assertEqual(W, ['N', 'S'])
 
 if __name__ == '__main__':
 	unittest.main()
