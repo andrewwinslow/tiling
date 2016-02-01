@@ -9,6 +9,8 @@ A = {'N', 'E', 'S', 'W'}
 dir2vec = {'N': (0, 1), 'E': (1, 0), 'S': (0, -1), 'W': (-1, 0)}
 comp = {'N': 'S', 'S': 'N', 'E': 'W', 'W': 'E'}
 vec2dir = {(0, 1): 'N', (1, 0): 'E', (0, -1): 'S', (-1, 0): 'W'}
+cw = {'N': 'E', 'E': 'S', 'S': 'W', 'W': 'N'}
+ccw = {'N': 'W', 'E': 'N', 'S': 'E', 'W': 'S'}
 
 # Input: a list W of element of A
 # Output: W with adjacent opposite direction elements removed
@@ -36,6 +38,28 @@ def is_closed(W):
 	for i in xrange(len(W)):
 		current = (current[0] + dir2vec[W[i]][0], current[1] + dir2vec[W[i]][1])
 	return current == (0, 0) 
+
+# Input: a polyomino boundary word
+# Output: the polyomino as a set of cells specified as integer 2-tuples
+def word2polyomino(W):
+	column2edges = {}
+	loc = (0, 0)
+	for i in xrange(len(W)):
+		if W[i] == 'E':
+			if not loc[0] in column2edges:
+				column2edges[loc[0]] = [] 
+			column2edges[loc[0]].append(loc[1])
+		if W[i] == 'W':
+			if not loc[0]-1 in column2edges:
+				column2edges[loc[0]-1] = [] 
+			column2edges[loc[0]-1].append(loc[1])
+		loc = (loc[0] + dir2vec[W[i]][0], loc[1] + dir2vec[W[i]][1])
+	cells = []
+	for x in column2edges:
+		for y in xrange(min(column2edges[x]), max(column2edges[x])+1):
+			if len(filter(lambda e: e > y, column2edges[x])) % 2 == 1:
+				cells.append((x, y))
+	return set(cells)	 
 
 # Input: a list W of elements of A
 # Output: whether W describes a non-self-intersecting path
@@ -93,7 +117,13 @@ def boundary_word2vertices(W):
 # Output: the area of the polygon
 def area(W):
 	P = boundary_word2vertices(W)
-	return 0.5 * abs(sum(P[i-1][0]*P[i][1] - P[i][0]*P[i-1][1] for i in xrange(len(P))))
+	return int(0.5 * abs(sum(P[i-1][0]*P[i][1] - P[i][0]*P[i-1][1] for i in xrange(len(P)))))
+
+# Input: a polyomino boundary word
+# Output: whether the polyomino is weakly simple (shares vertices but no overlapping cells)
+def is_weakly_simple(W):
+	cells = word2polyomino(W)
+	return len(cells) == area(W)	
 
 # Input: a positive integer n
 # Output: generator of the boundary words of length n
@@ -202,11 +232,16 @@ class TestStuff(unittest.TestCase):
 			[(0, 0), (0, 1), (0, 2), (1, 2), (1, 1), (1, 0)])
 		self.assertEqual(boundary_word2vertices(['N', 'E', 'E', 'S', 'W', 'W']), 
 			[(0, 0), (0, 1), (1, 1), (2, 1), (2, 0), (1, 0)])
+		self.assertEqual(boundary_word2vertices(
+			['N', 'N', 'N', 'E', 'E', 'E', 'S', 'W', 'W', 'S', 'E', 'N', 'E', 'S', 'S', 'W', 'W', 'W']),
+			[(0, 0), (0, 1), (0, 2), (0, 3), (1, 3), (2, 3), (3, 3), (3, 2), (2, 2), (1, 2), 
+				(1, 1), (2, 1), (2, 2), (3, 2), (3, 1), (3, 0), (2, 0), (1, 0)])
 
 	def test__area(self):
 		self.assertEqual(area(['N', 'E', 'S', 'W']), 1)
 		self.assertEqual(area(['N', 'N', 'E', 'S', 'S', 'W']), 2)
 		self.assertEqual(area(['N', 'W', 'N', 'E', 'E', 'S', 'S', 'W']), 3)
+		self.assertEqual(area(['N', 'N', 'N', 'E', 'E', 'E', 'S', 'W', 'W', 'S', 'E', 'N', 'E', 'S', 'S', 'W', 'W', 'W']), 8)
 
 	def test__enumerate_boundary_words(self):
 		for i in xrange(4):
@@ -233,6 +268,22 @@ class TestStuff(unittest.TestCase):
 		W = ['N', 'S']
 		cancel(W)
 		self.assertEqual(W, ['N', 'S'])
+
+	def test__word2polyomino(self):
+		self.assertEqual(word2polyomino(['N', 'E', 'S', 'W']), set([(0, 0)]))
+		self.assertEqual(word2polyomino(['N', 'N', 'E', 'S', 'S', 'W']), set([(0, 0), (0, 1)]))
+		self.assertEqual(word2polyomino(['N', 'N', 'E', 'S', 'E', 'S', 'W', 'W']), set([(0, 0), (0, 1), (1, 0)]))
+		self.assertEqual(word2polyomino(['N', 'N', 'E', 'S', 'E', 'N', 'E', 'S', 'S', 'W', 'W', 'W']), 
+			set([(0, 0), (0, 1), (1, 0), (2, 0), (2, 1)]))
+		self.assertEqual(word2polyomino(['N', 'N', 'E', 'E', 'S', 'W', 'S', 'E', 'S', 'W', 'W', 'N']),
+			set([(0, 0), (0, 1), (1, 1), (0, -1), (1, -1)]))
+
+	def test__is_weakly_simple(self):
+		self.assertTrue(is_weakly_simple(['N', 'E', 'S', 'W']))
+		self.assertTrue(is_weakly_simple(['N', 'N', 'E', 'S', 'S', 'W']))
+		self.assertTrue(is_weakly_simple(['N', 'N', 'E', 'E', 'S', 'W', 'E', 'S', 'W', 'W']))
+		self.assertTrue(is_weakly_simple(['N', 'N', 'N', 'E', 'E', 'E', 'S', 'W', 'W', 'S', 'E', 'N', 'E', 'S', 'S', 'W', 'W', 'W']))
+		self.assertFalse(is_weakly_simple(['N', 'N', 'E', 'E', 'E', 'S', 'W', 'W', 'S', 'E', 'N', 'N', 'E', 'S', 'S', 'S', 'W', 'W', 'W']))
 
 if __name__ == '__main__':
 	unittest.main()

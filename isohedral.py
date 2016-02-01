@@ -2,7 +2,6 @@
 import unittest
 import polyomino
 
-
 # Input: two words and a length.
 # Output: the longest common prefix of the words, up to the specified length.
 # Note: helper method
@@ -11,7 +10,6 @@ def longest_match(S1, S2, ub):
 	while i < min(len(S1), len(S2), ub) and S1[i] == S2[i]:
 		i = i + 1
 	return i 	
-
 
 # Input: a polyomino boundary word
 # Output: a list of all admissible mirror factors
@@ -72,31 +70,60 @@ def admissible_gapped_mirror_factor_pairs(P):
 					factor_pairs.append((((i-l+n)%n, (i+r)%n), ((j-l+n)%n, (j+r)%n)))
 	return factor_pairs
 
-
-# Input: a polyomino boundary word
-# Output: a list of all admissible palindrome factors
+# Input: a polyomino boundary word and angle theta
+# Output: a list of all admissible theta-drome factors
 # Note: helper method
-def admissible_palindrome_factors(P):
+def admissible_rotadrome_factors(P, theta):
+	rot_f = {180: lambda x: x, 90: lambda x: polyomino.ccw[x]}
 	n = len(P)
 	factors = []
 	# Compute admissible palindrome factors starting between letter pairs 
 	for i in xrange(n):
-		l = longest_match((P + P[:i])[::-1], P[i:] + P, n/2)
+		l = longest_match((P + P[:i])[::-1], [rot_f[theta](l) for l in P[i:] + P], n/2)
 		if l > 0:
 			factors.append(((i-l+n)%n, (i-1+l)%n))
 	# Compute admissible palindrome factors starting in middle of a letter
-	for i in xrange(n):
-		l = longest_match((P + P[:i])[::-1], P[(i+1)%n:] + P, n/2)
-		factors.append(((i-l+n)%n, (i+l)%n))
+	if theta == 180:
+		for i in xrange(n):
+			l = longest_match((P + P[:i])[::-1], P[(i+1)%n:] + P, n/2)
+			factors.append(((i-l+n)%n, (i+l)%n))
 	return factors
 
 # Input: a polyomino boundary word
-# Output: whether the polyomino has a quarter-turn tiling
+# Output: a witness boundary decomposition or None
 def has_quarter_turn_tiling(P):
-	pass		
+	n = len(P)
+	palin_factors = admissible_rotadrome_factors(P, 180)
+	ninety_factors = admissible_rotadrome_factors(P, 90)
+	ninety_factor_starts = {}
+	for i in xrange(n):
+		ninety_factor_starts[i] = set([])
+	for f in ninety_factors:
+		ninety_factor_starts[f[0]].add(f)
+	# Factorizations with non-empty palindrome factor
+	for C in palin_factors:
+		C_len = (C[1]-C[0]+1+n) % n
+		for A in ninety_factor_starts[(C[1]+1)%n]:
+			A_len = (A[1]-A[0]+1+n) % n
+			# One empty 90-drome factor
+			# AW: Is this actually possible for polyominoes?
+			if A_len + C_len == n: 
+				return [C, A]
+			# No empty 90-drome factors
+			for B in ninety_factor_starts[(A[1]+1)%n]:
+				B_len = (B[1]-B[0]+1+n) % n 
+				if A_len + B_len + C_len == n:
+					return [C, A, B]
+	# Factorizations with empty palindrome factor
+	for A in ninety_factors:
+		for B in ninety_factor_starts[(A[1] + 1)%n]:
+			AB_len = (A[1]-A[0]+1+n) % n + (B[1]-B[0]+1+n) % n 
+			if AB_len == n:
+				return [A, B]
+	return None
 
 # Input: a polyomino boundary word
-# Output: whether the polyomino has a translation tiling
+# Output: a witness boundary decomposition or None
 def has_translation_tiling(P):
 	n = len(P)
 	factors = admissible_mirror_factors(P)
@@ -115,25 +142,25 @@ def has_translation_tiling(P):
 				if AB_len > n/2:
 					continue
 				if AB_len == n/2:
-					return True
-				if ((B[1]+1)%n, (A[0]+n/2-1+n)%n) in factor_starts[(B[1]+1)%n]:
-					return True
-	return False
+					return [A, B]
+				C = ((B[1]+1)%n, (A[0]+n/2-1+n)%n) 
+				if C in factor_starts[C[0]]:
+					return [A, B, C]
+	return None
 
 # Input: a polyomino boundary word
-# Output: whether the polyomino has a translation tiling
+# Output: a witness boundary decomposition or None
 def has_half_turn_tiling(P):
 	n = len(P)
 	mirror_factor_pairs = admissible_gapped_mirror_factor_pairs(P)
-	palindrome_factor_start_lengths = {}
-	palindrome_factor_end_lengths = {}
+	palindrome_factor_starts = {}
+	palindrome_factor_ends = {}
 	for i in xrange(n):
-		palindrome_factor_start_lengths[i] = []
-		palindrome_factor_end_lengths[i] = []
-	for f in admissible_palindrome_factors(P):
-		f_length = f[1] + n * (f[1] < f[0]) - f[0] + 1
-		palindrome_factor_start_lengths[f[0]].append(f_length)
-		palindrome_factor_end_lengths[f[1]].append(f_length)	
+		palindrome_factor_starts[i] = []
+		palindrome_factor_ends[i] = []
+	for f in admissible_rotadrome_factors(P, 180):
+		palindrome_factor_starts[f[0]].append(f)
+		palindrome_factor_ends[f[1]].append(f)
 	zero_length_mirror_factor_pairs = []
 	for i in xrange(n):
 		for j in xrange(i+1, n):
@@ -144,19 +171,21 @@ def has_half_turn_tiling(P):
 		dpi2 = ((A_hat[1]+1)%n, (A[0]-1+n)%n)
 		# Check if both intervals are double palindromes
 		dpis = [dpi1, dpi2]
-		dpi_pass = {dpi1: False, dpi2: False}
+		dpi_pass = {dpi1: None, dpi2: None}
 		for dpi in dpis:
-			for B_len in palindrome_factor_start_lengths[dpi[0]]:
-				dpi_len = dpi[1] + n * (dpi[1] < dpi[0]) - dpi[0] + 1
+			for B in palindrome_factor_starts[dpi[0]]:
+				B_len = (B[1] - B[0] + 1 + n) % n
+				dpi_len = (dpi[1] - dpi[0] + 1 + n) % n
 				if dpi_len == B_len:
-					dpi_pass[dpi] = True
+					dpi_pass[dpi] = [B]
 					break
-				for C_len in palindrome_factor_end_lengths[dpi[1]]:
+				for C in palindrome_factor_ends[dpi[1]]:
+					C_len = (C[1] - C[0] + 1 + n) % n
 					if dpi_len == B_len + C_len:
-						dpi_pass[dpi] = True
+						dpi_pass[dpi] = [B, C]
 						break
 		if dpi_pass[dpi1] and dpi_pass[dpi2]:
-			return True	
+			return [A] + dpi_pass[dpi1] + [A_hat] + dpi_pass[dpi2]	
 	return False
 
 class TestStuff(unittest.TestCase):
@@ -164,8 +193,21 @@ class TestStuff(unittest.TestCase):
 	def setUp(self):
 		pass
 	
-	def test__admissible_palindrome_factors(self):
-		self.assertEqual(set(admissible_palindrome_factors(['N', 'E', 'S', 'W'])), set([(0, 0), (1, 1), (2, 2), (3, 3)])) 
+	def test__admissible_rotadrome_factors(self):
+		self.assertEqual(set(admissible_rotadrome_factors(['N', 'E', 'S', 'W'], 180)), 
+			set([(0, 0), (1, 1), (2, 2), (3, 3)])) 
+
+	def test__has_quarter_turn_tiling(self):
+		# Squares of various sizes
+		for i in [1,2,3,4,5]:
+			self.assertTrue(has_quarter_turn_tiling(['N']*i + ['E']*i + ['S']*i + ['W']*i))
+		# 2xi, ix2 rectangles
+		self.assertTrue(has_quarter_turn_tiling(['N'] + ['E']*2 + ['S'] + ['W']*2))
+		for i in [3,4,5]:
+			self.assertFalse(has_quarter_turn_tiling(['N'] + ['E']*i + ['S'] + ['W']*i))
+		# Small tetris pieces
+		self.assertTrue(has_quarter_turn_tiling(['N', 'N', 'N', 'E', 'S', 'E', 'S', 'S', 'W', 'W']))
+		self.assertFalse(has_quarter_turn_tiling(['N', 'N', 'E', 'N', 'E', 'S', 'E', 'S', 'S', 'W', 'N', 'W', 'S', 'W']))
 
 	def test__has_translation_tiling(self):
 		# Squares of various sizes
@@ -224,5 +266,6 @@ class TestStuff(unittest.TestCase):
 if __name__ == '__main__':
 	unittest.main()
 
+		
 
 

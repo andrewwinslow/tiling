@@ -7,11 +7,14 @@ import numpy
 import sys
 import math
 
-# Input: an undirected graph represented as an adjacency set in a dict of sets
-# Output: whether the graph has any cycles
-def has_cycle(G):
+# Input: an undirected graph represented as an adjacency set in a dict of sets,
+#        and a vertex of the graph v.
+# Output: whether the graph has any cycles in the component containing v.
+def has_cycle(G, v):
 	if len(G) == 0:
 		return False
+	visited = set([v])
+	path = [v]
 	def recurse(parent):
 		for neigh in G[path[-1]]:
 			if neigh == parent:
@@ -24,11 +27,8 @@ def has_cycle(G):
 				return True
 			path.pop()
 		return False
-	for root in G:
-		visited = set([root])
-		path = [root]
-		if recurse(None):
-			return True
+	if recurse(None):
+		return True
 	return False
 	
 
@@ -145,7 +145,7 @@ def unfolding_count(P):
 	
 
 # Input: a polycube represented as a set of integer 3-tuples
-# Output: The next half-edge around each face of the polycube's surface
+# Output: The next clockwise half-edge around each face of the polycube's surface
 def faces(P):
 	incr_vecs = {'X': [(0, 1, 0), (0, 0, 1), (0, 1, 1)],
 		'Y': [(1, 0, 0), (0, 0, 1), (1, 0, 1)],
@@ -198,6 +198,7 @@ def faces(P):
 	return G
 
 def face_dual(P):
+
 	def face_edges(f):
 		bad_coords = filter(lambda c: math.floor(f[c] + 0.6) == f[c], [0, 1, 2])
 		assert len(bad_coords) == 2
@@ -232,80 +233,135 @@ def unfoldings(P):
 	faces_C = faces(P)
 	faces_E = face_dual(P)
 	faces_V = set([e[0] for e in faces_E] + [e[1] for e in faces_E])
-	
-	def skele_tree_to_boundary_word(tree):
-		if len(tree) == 0:
+
+	# Constructs a boundary word from a skeleton graph, 
+	# randomly picking a component to trace the boundary of.	
+	def skele_cycle_to_boundary_word(skele_cycle):
+		if len(skele_cycle) == 0:
 			return []
-		half_edges = set([(e[0], e[1]) for e in tree] + [(e[1], e[0]) for e in tree])
-		rot = {'N': 'E', 'E': 'S', 'S': 'W', 'W': 'N'}
+
 		def next_edge(cur_e, cur_d):	
-			while not (faces_C[cur_e] in half_edges):
-				along_face = faces_C[cur_e] 
-				cur_e = (along_face[1], along_face[0])
-				cur_d = rot[rot[rot[cur_d]]]
-			cur_e = faces_C[cur_e]
-			cur_d = rot[cur_d]
+			cur_d = polyomino.cw[cur_d]	
+			naf = faces_C[cur_e]
+			while not naf in skele_cycle:
+				naf = faces_C[(naf[1], naf[0])] 
+				cur_d = polyomino.ccw[cur_d]
+			cur_e = naf	
 			return cur_e, cur_d
 
 		# Pick a starting edge and do an in-order traversal to define an Eulerian tour.
-		# Starting edge is the half edge of the last edge added that goes from a leaf
-		# to the rest of the tree
-		cur_e = list(half_edges)[0]
-		cur_dir = 'N'
+		start_e = list(skele_cycle)[0]
 		W = ['N']
-		for i in xrange(2*len(tree)-1):
-			cur_e, cur_dir = next_edge(cur_e, cur_dir)
+		cur_e, cur_dir = next_edge(start_e, 'N') 
+		while not cur_e == start_e:
 			W.append(cur_dir)	
+			cur_e, cur_dir = next_edge(cur_e, cur_dir)
 		return W
 
-	def tree_to_boundary_word(T):
-		def face_edges(f):
-			# Construct all edges with this midpoint
-			bad_coords = filter(lambda c: math.floor(f[c] + 0.6) == f[c], [0, 1, 2])
-			assert len(bad_coords) == 2
-			okp = [list(f), list(f), list(f), list(f)]
-			delta = [(-1, -1), (-1, 1), (1, 1), (1, -1)]
-			for i in xrange(4):
-				okp[i][bad_coords[0]] = okp[i][bad_coords[0]] + 0.5*delta[i][0]
-				okp[i][bad_coords[1]] = okp[i][bad_coords[1]] + 0.5*delta[i][1]
-			return set([(tuple(okp[i]), tuple(okp[i+1])) for i in xrange(-1, 3)] + 
-				[(tuple(okp[i+1]), tuple(okp[i])) for i in xrange(-1, 3)])
+	def face_edges(f):
+		# Construct all edges with this midpoint
+		bad_coords = filter(lambda c: math.floor(f[c] + 0.6) == f[c], [0, 1, 2])
+		okp = [list(f), list(f), list(f), list(f)]
+		delta = [(-1, -1), (-1, 1), (1, 1), (1, -1)]
+		for i in xrange(4):
+			okp[i][bad_coords[0]] = okp[i][bad_coords[0]] + 0.5*delta[i][0]
+			okp[i][bad_coords[1]] = okp[i][bad_coords[1]] + 0.5*delta[i][1]
+		return set([(tuple(okp[i]), tuple(okp[i+1])) for i in xrange(-1, 3)] + 
+			[(tuple(okp[i+1]), tuple(okp[i])) for i in xrange(-1, 3)])
 
+	def graph_to_boundary_word(T):
+		T_V = set([e[0] for e in T] + [e[1] for e in T])
 		# Take dual edges of those not in T
 		comp_T = faces_E - T 
-		skele_T_E = set([])
+		# Construct the cycle through these edges that traces
+		# the boundary of T clockwise
+		skele_cycle = set([])
 		for e in comp_T:
-			skele_T_E.add(list(face_edges(e[0]) & face_edges(e[1]))[0])	
-		return skele_tree_to_boundary_word(skele_T_E)	
-	
-	def recurse(pT, rem_E):
+			# If edge doesn't connect to something in T
+			if (not e[0] in T_V) and (not e[1] in T_V):
+				continue 
+			cand_edges = list(set(face_edges(e[0]) & face_edges(e[1]) & set(faces_C.keys())))	
+			if faces_C[cand_edges[0]] in face_edges(e[1]):
+				cand_edges = [cand_edges[1], cand_edges[0]] 
+			if e[0] in T_V:
+				skele_cycle.add(cand_edges[0])
+			if e[1] in T_V:
+				skele_cycle.add(cand_edges[1])
+		return skele_cycle_to_boundary_word(skele_cycle)	
+
+	pT = set([])	
+	rem_E = sorted(list(faces_E))
+	G_pT = {}
+	for v in faces_V:
+		G_pT[v] = set([])
+	G_T_rem_E = {}
+	for v in faces_V:
+		G_T_rem_E[v] = set([])
+		for e in faces_E:
+			if v == e[0]:
+				G_T_rem_E[v].add(e[1])
+			if v == e[1]:
+				G_T_rem_E[v].add(e[0])
+
+	def nonplanar_pT():
+		return not polyomino.is_weakly_simple(graph_to_boundary_word(pT))
+		
+	def recurse():
 		if len(pT) == len(faces_V) - 1:
 			yield pT
 			return
 		if len(rem_E) == 0:
 			return
-		b = list(rem_E)[0]
+		# Adversarily decide on an edge b to branch on.
+		# Thus look for one that kills one of the two branches.
+		b = '?'
+		for pb in rem_E:
+			G_T_rem_E[pb[0]].remove(pb[1])
+			G_T_rem_E[pb[1]].remove(pb[0])
+			if not is_connected(G_T_rem_E):
+				b = pb
+			G_T_rem_E[pb[0]].add(pb[1])
+			G_T_rem_E[pb[1]].add(pb[0])
+			
+			G_pT[pb[0]].add(pb[1])
+			G_pT[pb[1]].add(pb[0])
+			if (has_cycle(G_pT, pb[0]) or nonplanar_pT()):
+				b = pb	
+			G_pT[pb[0]].remove(pb[1])
+			G_pT[pb[1]].remove(pb[0])
+			if b != '?':
+				break
+		if b == '?':
+			b = rem_E[0]
+		rem_E.remove(b)
+
 		# Recursion 1: b is not included. 
 		# Recurse with slightly smaller remaining edge set.
-		new_rem_E = copy.deepcopy(rem_E)
-		new_rem_E.remove(b)	
-		new_pT = copy.deepcopy(pT)
-		for T in recurse(new_pT, new_rem_E):
-			yield T
+		G_T_rem_E[b[0]].remove(b[1])
+		G_T_rem_E[b[1]].remove(b[0])
+		if is_connected(G_T_rem_E):
+			for T in recurse():
+				yield T
+		G_T_rem_E[b[0]].add(b[1])
+		G_T_rem_E[b[1]].add(b[0])
 		# Recursion 2: b is included.
 		# Recurse with slightly smaller remaining edge set and tree
-		new_rem_E = copy.deepcopy(rem_E)
-		new_rem_E.remove(b)	
-		new_pT = copy.deepcopy(pT)
-		new_pT.add(b)
+		pT.add(b)
+		G_pT[b[0]].add(b[1])
+		G_pT[b[1]].add(b[0])
 		# Gut check: does T have any cycles? Die if so.
-		if has_cycle(edge_set2graph(new_pT)):
-			return 
-		for T in recurse(new_pT, new_rem_E):
-			yield T
+		# For speed, only check component containing b
+		if not (has_cycle(G_pT, b[0]) or nonplanar_pT()): 
+			for T in recurse():
+				yield T
+		# Restore variables
+		pT.remove(b)
+		G_pT[b[0]].remove(b[1])
+		G_pT[b[1]].remove(b[0])
+		rem_E.append(b)
 
-	for T in recurse(set([]), faces_E):
-		yield tree_to_boundary_word(T)
+	for T in recurse():
+		yield graph_to_boundary_word(T)
 
 
 class TestStuff(unittest.TestCase):
@@ -397,24 +453,28 @@ class TestStuff(unittest.TestCase):
 
 	def test__has_cycle(self):
 		G = {1: set([2]), 2: set([1, 3]), 3: set([2])}
-		self.assertFalse(has_cycle(G))
+		self.assertFalse(has_cycle(G, 1))
+		self.assertFalse(has_cycle(G, 2))
+		self.assertFalse(has_cycle(G, 3))
 		G[3].add(1)
 		G[1].add(3)
-		self.assertTrue(has_cycle(G))
+		self.assertTrue(has_cycle(G, 1))
+		self.assertTrue(has_cycle(G, 2))
+		self.assertTrue(has_cycle(G, 3))
 
 		G = {1: set([2]), 2: set([1, 3]), 3: set([2, 4]), 4: set([3])}
-		self.assertFalse(has_cycle(G))
+		self.assertFalse(has_cycle(G, 1))
+		self.assertFalse(has_cycle(G, 2))
+		self.assertFalse(has_cycle(G, 3))
 		G[4].add(1)
 		G[1].add(4)
-		self.assertTrue(has_cycle(G))
+		self.assertTrue(has_cycle(G, 1))
+		self.assertTrue(has_cycle(G, 2))
+		self.assertTrue(has_cycle(G, 3))
+		self.assertTrue(has_cycle(G, 4))
 
-		G = {(-1, 0, 0): set([(0, 1, 0)]), (0, 0, -1): set([(1, 0, 0)]), (1, 0, 0): set([(0, 0, 1), (0, 0, -1), (0, -1, 0)]), (0, -1, 0): set([(0, 0, 1), (1, 0, 0)]), (0, 0, 1): set([(0, -1, 0), (1, 0, 0)]), (0, 1, 0): set([(-1, 0, 0)])} 
-		self.assertTrue(has_cycle(G))
-
-		G = {(-0.5, 0.0, 0.0): set([(0.0, 0.5, 0.0)]), (0.0, 0.0, -0.5): set([(0.5, 0.0, 0.0)]), (0.5, 0.0, 0.0): set([(0.0, 0.0, 0.5), (0.0, 0.0, -0.5), (0.0, -0.5, 0.0)]), (0.0, -0.5, 0.0): set([(0.0, 0.0, 0.5), (0.5, 0.0, 0.0)]), (0.0, 0.0, 0.5): set([(0.0, -0.5, 0.0), (0.5, 0.0, 0.0)]), (0.0, 0.5, 0.0): set([(-0.5, 0.0, 0.0)])}
-		self.assertTrue(has_cycle(G))
-	
-		self.assertFalse(has_cycle({1: set([2]), 2: set([1])}))
+		self.assertFalse(has_cycle({1: set([2]), 2: set([1])}, 1))
+		self.assertFalse(has_cycle({1: set([2]), 2: set([1])}, 2))
 
 if __name__ == '__main__':
 	unittest.main()
