@@ -31,6 +31,21 @@ def has_cycle(G, v):
 		return True
 	return False
 	
+# Input: a directed graph represented as an adjacency set in a dict of sets
+#        and a vertex of this graph. 
+# Output: the number of vertices reachable from the vertex.
+def reachable(G, root):
+	visited = set([root])
+	path = [root]
+	def recurse():
+		for neigh in G[path[-1]]:
+			if not (neigh in visited):
+				path.append(neigh)
+				visited.add(neigh)
+				recurse()
+				path.pop()
+	recurse()
+	return visited
 
 # Input: a directed graph represented as an adjacency set in a dict of sets
 # Output: whether the graph is strongly connected
@@ -246,46 +261,6 @@ def unfoldings(P):
 	faces_CW, faces_CCW = face_cycles(P)
 	faces_V, faces_E = face_dual(P)
 
-	# Constructs a boundary word from a skeleton graph, 
-	# randomly picking a component to trace the boundary of.	
-	def skele_cycle_to_boundary_word(skele_cycle):
-		if len(skele_cycle) == 0:
-			return []
-
-		def next_edge(cur_e, cur_d):	
-			cur_d = polyomino.cw[cur_d]	
-			naf = faces_CW[cur_e]
-			while not naf in skele_cycle:
-				naf = faces_CW[(naf[1], naf[0])] 
-				cur_d = polyomino.ccw[cur_d]
-			cur_e = naf	
-			return cur_e, cur_d
-
-		# Pick a starting edge and do an in-order traversal to define an Eulerian tour.
-		start_e = min(skele_cycle)
-		W = ['N']
-		cur_e, cur_dir = next_edge(start_e, 'N') 
-		while not cur_e == start_e:
-			W.append(cur_dir)	
-			cur_e, cur_dir = next_edge(cur_e, cur_dir)
-		return W
-
-	def tree_to_boundary_word(T):
-		T_V = set([e[0] for e in T] + [e[1] for e in T])
-		# Take dual edges of those not in T
-		comp_T = faces_E - T 
-		# Construct the cycle through these edges that traces
-		# the boundary of T clockwise
-		skele_cycle = set([])
-		for e in comp_T:
-			# Grab the edges that The edges we want are those that run clockwise 
-			# along a face of the polycube that's *in* T 
-			if e[0] in T_V:
-				skele_cycle.update(faces_CW[e[0]] & faces_CCW[e[1]])
-			if e[1] in T_V:
-				skele_cycle.update(faces_CW[e[1]] & faces_CCW[e[0]])	
-		return skele_cycle_to_boundary_word(skele_cycle)	
-	
 	pT = set([])	
 	rem_E = sorted(list(faces_E)) # Sort to bias towards "filling out" along X-axis?
 	G_pT = {}
@@ -299,15 +274,54 @@ def unfoldings(P):
 				G_T_rem_E[v].add(e[1])
 			if v == e[1]:
 				G_T_rem_E[v].add(e[0])
+	
+	def tree_to_boundary_word():
+		if len(G_pT.keys()) == 0:
+			return []
+
+		start_e = '?'
+		cur_v = '?' 
+		for v in max([reachable(G_pT, v) for v in G_pT], key=lambda c: len(c)):
+			# Find a face edge of a vertex in pT that 
+			# borders another face not in pT
+			if len(G_pT[v]) > 1:
+				continue
+			cur_v = v
+			if len(G_pT[v]) == 0:
+				start_e = min(faces_CW[v])
+				break
+			for e in faces_CW[v]:
+				if not (e in faces_CCW[min(G_pT[v])]) and not (faces_CW[e] in faces_CCW[min(G_pT[v])]):
+					start_e = e
+			break	
+
+		W = [polyomino.cw['S']]
+		cur_d = polyomino.cw['S']
+		cur_e = faces_CW[start_e]
+		while cur_e != start_e:
+			adjoining_edges = {}
+			for neigh_v in G_pT[cur_v]:
+				adjoining_edges[min(faces_CCW[neigh_v] & faces_CW[cur_v])] = neigh_v	
+			if cur_e in adjoining_edges: # Not an edge of tree's boundary
+				# Move to the adjoining cell
+				cur_v = adjoining_edges[cur_e]
+				cur_e = faces_CW[(cur_e[1], cur_e[0])]
+				cur_d = polyomino.cw[polyomino.comp[cur_d]]
+			else:	# An edge of the tree's boundary
+				# Add the current edge to the boundary word
+				W.append(polyomino.cw[cur_d])
+				cur_d = polyomino.cw[cur_d]
+				cur_e = faces_CW[cur_e]
+		return W
 
 	def nonplanar_pT():
 		#Stronger constraint for strongly simple unfoldings: 
-		#return not polyomino.is_simple(tree_to_boundary_word(pT))
-		return not polyomino.is_weakly_simple(tree_to_boundary_word(pT))
+		#return not polyomino.is_simple(tree_to_boundary_word())
+		return not polyomino.is_weakly_simple(tree_to_boundary_word())
 		
 	def recurse():
 		if len(pT) == len(faces_V) - 1:
-			yield pT
+			yield tree_to_boundary_word()
 			return
 		if len(rem_E) == 0:
 			return
@@ -340,8 +354,8 @@ def unfoldings(P):
 		G_T_rem_E[b[1]].remove(b[0])
 		# Gut check: can possibly finish a (connected) tree?
 		if is_connected(G_T_rem_E): 
-			for T in recurse():
-				yield T
+			for W in recurse():
+				yield W
 		G_T_rem_E[b[0]].add(b[1])
 		G_T_rem_E[b[1]].add(b[0])
 		# Recursion 2: b is included.
@@ -351,16 +365,16 @@ def unfoldings(P):
 		G_pT[b[1]].add(b[0])
 		# Gut check: does T have any cycles or a nonplanar unfolding? 
 		if not (has_cycle(G_pT, b[0]) or nonplanar_pT()): 
-			for T in recurse():
-				yield T
+			for W in recurse():
+				yield W
 		# Restore variables
 		pT.remove(b)
 		G_pT[b[0]].remove(b[1])
 		G_pT[b[1]].remove(b[0])
 		rem_E.append(b)
 
-	for T in recurse():
-		yield tree_to_boundary_word(T)
+	for W in recurse():
+		yield W
 
 
 class TestStuff(unittest.TestCase):
@@ -417,7 +431,7 @@ class TestStuff(unittest.TestCase):
 				nontiling_count = nontiling_count + 1
 			else:
 				break
-		self.assertEqual(nontiling_count, 5)
+		self.assertEqual(nontiling_count, 4)
 
 	def test__unfolding_count(self):
 		self.assertEqual(unfolding_count(set([(0, 0, 0)])), ((2*1)**3 * (2*2)**3 * (2*3)**1) / 8)
