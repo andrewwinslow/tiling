@@ -98,9 +98,10 @@ def cell_dual(P):
 def is_polycube(P):
 	return is_connected(cell_dual(P))
 
-# Input: a polycube represented as a set of integer 3-tuples
-# Output: the number of unfoldings
-def unfolding_count(P):
+# Input: an undirected graph represented as an dict of adjacency sets
+# Output: the number of spanning trees of the graph
+def spanning_tree_count(G):
+	
 	def determinant(A):
 		return int(numpy.linalg.det(A))
 		"""
@@ -118,13 +119,11 @@ def unfolding_count(P):
 				total = total + factor*determinant(new_A)
 		return total
 		"""
-	V, E = face_dual(P)
-	V = list(V) # Need V to be indexable
+	V = list(G.keys()) # Need V to be indexable
 	A = [[0] * len(V) for i in xrange(len(V))]
 	for i in xrange(len(V)):
 		for j in xrange(len(V)):
-			e = (V[i], V[j])
-			if e in E or (e[1], e[0]) in E:
+			if V[j] in G[V[i]]:
 				A[i][j] = -1 # Invert now, since we really want -A
 	# Set diagonals to degrees (negative sum of -1 entries in row)
 	for i in xrange(len(V)):
@@ -135,7 +134,20 @@ def unfolding_count(P):
 	del A[-1]	
 	# Now return determinant
 	return determinant(A)
-	
+
+# Input: a polycube represented as a set of integer 3-tuples
+# Output: the number of unfoldings
+def unfolding_count(P):
+	V, E = face_dual(P)
+	G = {}
+	for v in V:
+		G[v] = set([])
+		for e in E:
+			if e[0] == v:
+				G[v].add(e[1])
+			elif e[1] == v:
+				G[v].add(e[0])
+	return spanning_tree_count(G)	
 
 # Input: a polycube represented as a set of integer 3-tuples
 # Output: Two dictionaries. The first has a set of clockwise half-edges for each face and
@@ -261,7 +273,6 @@ def unfoldings(P):
 	faces_CW, faces_CCW = face_cycles(P)
 	faces_V, faces_E = face_dual(P)
 
-	pT = set([])	
 	rem_E = sorted(list(faces_E)) # Sort to bias towards "filling out" along X-axis?
 	G_pT = {}
 	for v in faces_V:
@@ -276,20 +287,17 @@ def unfoldings(P):
 				G_T_rem_E[v].add(e[0])
 	
 	def tree_to_boundary_word():
-		if len(G_pT.keys()) == 0:
-			return []
-
+		if sum([len(v) for v in G_pT.values()]) < 2:
+			return ['N', 'E', 'S', 'W']
+	
 		start_e = '?'
 		cur_v = '?' 
-		for v in max([reachable(G_pT, v) for v in G_pT], key=lambda c: len(c)):
+		for v in G_pT:
 			# Find a face edge of a vertex in pT that 
 			# borders another face not in pT
-			if len(G_pT[v]) > 1:
+			if len(G_pT[v]) != 1:
 				continue
 			cur_v = v
-			if len(G_pT[v]) == 0:
-				start_e = min(faces_CW[v])
-				break
 			for e in faces_CW[v]:
 				if not (e in faces_CCW[min(G_pT[v])]) and not (faces_CW[e] in faces_CCW[min(G_pT[v])]):
 					start_e = e
@@ -320,32 +328,53 @@ def unfoldings(P):
 		return not polyomino.is_weakly_simple(tree_to_boundary_word())
 		
 	def recurse():
-		if len(pT) == len(faces_V) - 1:
+		pT_edge_count = sum([len(G_pT[v]) for v in G_pT]) / 2
+		# If the number of edges is right
+		if pT_edge_count == len(faces_V) - 1:
 			yield tree_to_boundary_word()
 			return
-		if len(rem_E) == 0:
+		# If there aren't enough edges left to make a tree
+		if len(rem_E) + pT_edge_count < len(faces_V) - 1:
 			return
 		# Adversarily decide on an edge b to branch on.
 		# Thus look for one that kills one of the two branches.
-		b = '?'
+		branch1_killer = '?'
+		branch2_killer = '?'
 		for pb in rem_E:
+			# These must necessarily be connected to existing partial tree
+			if len(G_pT[pb[0]]) + len(G_pT[pb[1]]) == 0:
+				continue
 			G_T_rem_E[pb[0]].remove(pb[1])
 			G_T_rem_E[pb[1]].remove(pb[0])
 			if not is_connected(G_T_rem_E):
-				b = pb
+				branch1_killer = pb
 			G_T_rem_E[pb[0]].add(pb[1])
 			G_T_rem_E[pb[1]].add(pb[0])
 			
 			G_pT[pb[0]].add(pb[1])
 			G_pT[pb[1]].add(pb[0])
 			if (has_cycle(G_pT, pb[0]) or nonplanar_pT()):
-				b = pb	
+				branch2_killer = pb	
 			G_pT[pb[0]].remove(pb[1])
 			G_pT[pb[1]].remove(pb[0])
-			if b != '?':
-				break
+
+			# If you can kill both branches, do it
+			if branch1_killer == pb and branch2_killer == pb:
+				return 
+		# Take branch 2 killer preferably (branch 1 is closer to end b/c edge starvation)
+		b = '?'
+		if branch2_killer != '?':
+			b = branch2_killer
 		if b == '?':
-			b = rem_E[0]
+			b = branch1_killer
+		# If neither branch can be killed, pick something
+		# that's connected to the stuff you're growing
+		if b == '?':
+			b = rem_E[0] # If you haven't even grown anything, just pick any edge
+			for pb in rem_E:
+				if len(G_pT[pb[0]]) + len(G_pT[pb[1]]) > 0:
+					b = pb 
+					break 
 		rem_E.remove(b)
 
 		# Recursion 1: b is not included. 
@@ -360,7 +389,6 @@ def unfoldings(P):
 		G_T_rem_E[b[1]].add(b[0])
 		# Recursion 2: b is included.
 		# Recurse with slightly smaller remaining edge set and tree
-		pT.add(b)
 		G_pT[b[0]].add(b[1])
 		G_pT[b[1]].add(b[0])
 		# Gut check: does T have any cycles or a nonplanar unfolding? 
@@ -368,7 +396,6 @@ def unfoldings(P):
 			for W in recurse():
 				yield W
 		# Restore variables
-		pT.remove(b)
 		G_pT[b[0]].remove(b[1])
 		G_pT[b[1]].remove(b[0])
 		rem_E.append(b)
@@ -395,43 +422,6 @@ class TestStuff(unittest.TestCase):
 			self.assertTrue(polyomino.is_polyomino(uf))
 			self.assertTrue(isohedral.has_translation_tiling(uf) or isohedral.has_half_turn_tiling(uf))
 		self.assertEqual(count, 384) # 384 = ((2*1)**3 * (2*2)**3 * (2*3)**1) / 8 
-		# A little sampling of the dicube
-		nontiling_count = 0
-		tiling_count = 0
-		for uf in unfoldings(set([(0, 0, 0), (1, 0, 0)])):
-			cuf = polyomino.cancel(uf)
-			self.assertTrue(polyomino.is_polyomino(cuf)) 
-			if (isohedral.has_translation_tiling(cuf) or isohedral.has_half_turn_tiling(cuf)):
-				tiling_count = tiling_count + 1
-			else:
-				nontiling_count = nontiling_count + 1
-			if nontiling_count + tiling_count == 13 + 61:
-				break
-		self.assertEqual(nontiling_count, 13)
-		self.assertEqual(tiling_count, 61)
-		# A little sampling of some lame tricube
-		nontiling_count = 0
-		tiling_count = 0
-		for uf in unfoldings(set([(0, 0, 0), (1, 0, 0), (2, 0, 0)])):
-			cuf = polyomino.cancel(uf)
-			self.assertTrue(polyomino.is_polyomino(cuf)) 
-			if (isohedral.has_translation_tiling(cuf) or isohedral.has_half_turn_tiling(cuf)):
-				tiling_count = tiling_count + 1
-			else:
-				nontiling_count = nontiling_count + 1
-			if nontiling_count + tiling_count == 78 + 34:
-				break
-		self.assertEqual(nontiling_count, 78)
-		self.assertEqual(tiling_count, 34)
-		# A little sampling of some lame pentacube
-		nontiling_count = 0
-		for uf in unfoldings(set([(0, 0, 0), (0, 1, 0), (0, 2, 0), (0, 3, 0), (1, 0, 0)])):
-			cuf = polyomino.cancel(uf)
-			if not (isohedral.has_translation_tiling(cuf) or isohedral.has_half_turn_tiling(cuf)):
-				nontiling_count = nontiling_count + 1
-			else:
-				break
-		self.assertEqual(nontiling_count, 4)
 
 	def test__unfolding_count(self):
 		self.assertEqual(unfolding_count(set([(0, 0, 0)])), ((2*1)**3 * (2*2)**3 * (2*3)**1) / 8)
