@@ -61,9 +61,9 @@ def edge_set2graph(E):
 		G[e[1]].add(e[0])
 	return G
 
-# Input: a set of integer 3-tuples
-# Output: whether the set of cells their describe has a connected dual graph
-def is_polycube(P):
+# Input: a polycube described by a set of integer 3-tuples
+# Output: the cell dual graph
+def cell_dual(P):
 	def neighbors(cell):
 		vecs = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)]
 		return set([(cell[0] + v[0], cell[1] + v[1], cell[2] + v[2]) for v in vecs])
@@ -76,33 +76,12 @@ def is_polycube(P):
 		for neigh in neighbors(cell) & P:
 			G[cell].add(neigh)
 			G[neigh].add(cell)
-	return is_connected(G)
+	return G
 
-# Input: a polycube represented as a set of integer 3-tuples
-# Output: The set of edges of the skeleton
-def skeleton(P):
-	incr_vecs = {'X': [(0, 1, 0), (0, 0, 1), (0, 1, 1)],
-		'Y': [(1, 0, 0), (0, 0, 1), (1, 0, 1)],
-		'Z': [(1, 0, 0), (0, 1, 0), (1, 1, 0)]}
-	def neighbors(v, d):
-		return set([(v[0]+vec[0], v[1]+vec[1], v[2]+vec[2]) for vec in incr_vecs[d] + [(0, 0, 0)]])
-
-	E = set([])
-	x_range = (min([x for (x, y, z) in P]), max([x for (x, y, z) in P]))
-	y_range = (min([y for (x, y, z) in P]), max([y for (x, y, z) in P]))
-	z_range = (min([z for (x, y, z) in P]), max([z for (x, y, z) in P]))
-	for x in xrange(x_range[0]-1, x_range[1]+1):
-		for y in xrange(y_range[0]-1, y_range[1]+1):
-			for z in xrange(z_range[0]-1, z_range[1]+1):
-				# For each edge, check if it's incident to between 1 and 3 cells
-				# If so, add it to the skeleton.
-				if 0 < len(neighbors((x, y, z), 'X') & P) < 4:
-					E.add(((x-0.5, y+0.5, z+0.5), (x+0.5, y+0.5, z+0.5)))	
-				if 0 < len(neighbors((x, y, z), 'Y') & P) < 4:
-					E.add(((x+0.5, y-0.5, z+0.5), (x+0.5, y+0.5, z+0.5)))	
-				if 0 < len(neighbors((x, y, z), 'Z') & P) < 4:
-					E.add(((x+0.5, y+0.5, z-0.5), (x+0.5, y+0.5, z+0.5)))	
-	return E
+# Input: a set of integer 3-tuples
+# Output: whether the set of cells their describe has a connected dual graph
+def is_polycube(P):
+	return is_connected(cell_dual(P))
 
 # Input: a polycube represented as a set of integer 3-tuples
 # Output: the number of unfoldings
@@ -124,20 +103,19 @@ def unfolding_count(P):
 				total = total + factor*determinant(new_A)
 		return total
 		"""
-
-	skele_E = skeleton(P)	
-	skele_V = list(set([e[0] for e in skele_E] + [e[1] for e in skele_E]))
-	A = [[0] * len(skele_V) for i in xrange(len(skele_V))]
-	for i in xrange(len(skele_V)):
-		for j in xrange(len(skele_V)):
-			e = (skele_V[i], skele_V[j])
-			if e in skele_E or (e[1], e[0]) in skele_E:
+	V, E = face_dual(P)
+	V = list(V) # Need V to be indexable
+	A = [[0] * len(V) for i in xrange(len(V))]
+	for i in xrange(len(V)):
+		for j in xrange(len(V)):
+			e = (V[i], V[j])
+			if e in E or (e[1], e[0]) in E:
 				A[i][j] = -1 # Invert now, since we really want -A
 	# Set diagonals to degrees (negative sum of -1 entries in row)
-	for i in xrange(len(skele_V)):
+	for i in xrange(len(V)):
 		A[i][i] = -sum(A[i])	
 	# Now delete one row and column (the last ones)
-	for i in xrange(len(skele_V)):
+	for i in xrange(len(V)):
 		del A[i][-1]
 	del A[-1]	
 	# Now return determinant
@@ -145,12 +123,10 @@ def unfolding_count(P):
 	
 
 # Input: a polycube represented as a set of integer 3-tuples
-# Output: The next clockwise half-edge around each face of the polycube's surface
-def faces(P):
-	incr_vecs = {'X': [(0, 1, 0), (0, 0, 1), (0, 1, 1)],
-		'Y': [(1, 0, 0), (0, 0, 1), (1, 0, 1)],
-		'Z': [(1, 0, 0), (0, 1, 0), (1, 1, 0)]}
-
+# Output: Two dictionaries. The first has a set of clockwise half-edges for each face and
+#         the next clockwise edge for each edge. The second dictionary is the same, 
+#         but for counterclockwise edges.
+def face_cycles(P):
 	G = {}
 	for c in P:
 		if not (c[0] + 1, c[1], c[2]) in P:
@@ -158,44 +134,64 @@ def faces(P):
 				(c[0]+0.5, c[1]+0.5, c[2]-0.5),
 				(c[0]+0.5, c[1]-0.5, c[2]-0.5),
 				(c[0]+0.5, c[1]-0.5, c[2]+0.5)]
+			G[(c[0]+0.5, c[1], c[2])] = set([])
 			for i in xrange(4):
+				G[(c[0]+0.5, c[1], c[2])].add((verts[i-2], verts[i-1]))
 				G[(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
+
 		if not (c[0] - 1, c[1], c[2]) in P:
 			verts = [(c[0]-0.5, c[1]+0.5, c[2]+0.5), 
 				(c[0]-0.5, c[1]-0.5, c[2]+0.5),
 				(c[0]-0.5, c[1]-0.5, c[2]-0.5),
 				(c[0]-0.5, c[1]+0.5, c[2]-0.5)]
+			G[(c[0]-0.5, c[1], c[2])] = set([])
 			for i in xrange(4):
+				G[(c[0]-0.5, c[1], c[2])].add((verts[i-2], verts[i-1]))
 				G[(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
 		if not (c[0], c[1]+1, c[2]) in P:
 			verts = [(c[0]-0.5, c[1]+0.5, c[2]+0.5), 
 				(c[0]-0.5, c[1]+0.5, c[2]-0.5),
 				(c[0]+0.5, c[1]+0.5, c[2]-0.5),
 				(c[0]+0.5, c[1]+0.5, c[2]+0.5)]
+			G[(c[0], c[1]+0.5, c[2])] = set([])
 			for i in xrange(4):
+				G[(c[0], c[1]+0.5, c[2])].add((verts[i-2], verts[i-1]))
 				G[(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
 		if not (c[0], c[1]-1, c[2]) in P:
 			verts = [(c[0]+0.5, c[1]-0.5, c[2]+0.5), 
 				(c[0]+0.5, c[1]-0.5, c[2]-0.5),
 				(c[0]-0.5, c[1]-0.5, c[2]-0.5),
 				(c[0]-0.5, c[1]-0.5, c[2]+0.5)]
+			G[(c[0], c[1]-0.5, c[2])] = set([])
 			for i in xrange(4):
+				G[(c[0], c[1]-0.5, c[2])].add((verts[i-2], verts[i-1]))
 				G[(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
 		if not (c[0], c[1], c[2]+1) in P:
 			verts = [(c[0]-0.5, c[1]-0.5, c[2]+0.5), 
 				(c[0]-0.5, c[1]+0.5, c[2]+0.5),
 				(c[0]+0.5, c[1]+0.5, c[2]+0.5),
 				(c[0]+0.5, c[1]-0.5, c[2]+0.5)]
+			G[(c[0], c[1], c[2]+0.5)] = set([])
 			for i in xrange(4):
+				G[(c[0], c[1], c[2]+0.5)].add((verts[i-2], verts[i-1]))
 				G[(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
 		if not (c[0], c[1], c[2]-1) in P:
 			verts = [(c[0]+0.5, c[1]-0.5, c[2]-0.5), 
 				(c[0]+0.5, c[1]+0.5, c[2]-0.5),
 				(c[0]-0.5, c[1]+0.5, c[2]-0.5),
 				(c[0]-0.5, c[1]-0.5, c[2]-0.5)]
+			G[(c[0], c[1], c[2]-0.5)] = set([])
 			for i in xrange(4):
+				G[(c[0], c[1], c[2]-0.5)].add((verts[i-2], verts[i-1]))
 				G[(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
-	return G
+	CCW_G = {}
+	for k in G:
+		if len(G[k]) == 4: # Face!
+			CCW_G[k] = set([(e[1], e[0]) for e in G[k]])
+		else: # Edge!
+			next_e = G[k]
+			CCW_G[(next_e[1], next_e[0])] = (k[1], k[0])
+	return G, CCW_G
 
 def face_dual(P):
 
@@ -210,29 +206,45 @@ def face_dual(P):
 		return set([(tuple(okp[i]), tuple(okp[i+1])) for i in xrange(-1, 3)] + 
 			[(tuple(okp[i+1]), tuple(okp[i])) for i in xrange(-1, 3)])
 
+	cell_G = cell_dual(P)
+	def cell_distance_leq_2(c1, c2):
+		if c1 == c2:
+			return True
+		if c2 in cell_G[c1]:
+			return True
+		for c3 in cell_G[c1]:
+			if c2 in cell_G[c3]:
+				return True
+		return False
+
+	v2c = {}
 	V = set([])
 	E = set([])
 	unit_vecs = set([(1, 0, 0), (0, 1, 0), (0, 0, 1)])
 	for c in P:
 		for vec in unit_vecs:
 			for sign in [-1, 1]:
-				adj_vec = tuple([sign*vec[i] for i in xrange(3)])
-				if tuple([c[i] + adj_vec[i] for i in xrange(3)]) in P:
+				adj_vec = tuple([sign*vec[i] for i in [0, 1, 2]])
+				if tuple([c[i] + adj_vec[i] for i in [0, 1, 2]]) in P:
 					continue
-				vert = tuple([c[i] + 0.5*adj_vec[i] for i in xrange(3)])
+				vert = tuple([c[i] + 0.5*adj_vec[i] for i in [0, 1, 2]])
+				v2c[vert] = c
 				for v in V:
-					if len(face_edges(vert) & face_edges(v)) > 0:
+					# Must share a common edge and not do so degenerately
+					# Non-degenerate: the faces' cells are either the same (reflex), 
+					# adjacent (flat), or distance 2 (convex)  
+					if (len(face_edges(vert) & face_edges(v)) > 0 and 
+						cell_distance_leq_2(v2c[vert], v2c[v])):
 						E.add((vert, v))
 				V.add(vert) 
-	return E
+	return V, E
 
 	
 # Input: a polycube represented as a set of integer 3-tuples
 # Output: a generator of the boundary words of the polycube's unfoldings 
 def unfoldings(P):
-	faces_C = faces(P)
-	faces_E = face_dual(P)
-	faces_V = set([e[0] for e in faces_E] + [e[1] for e in faces_E])
+	faces_CW, faces_CCW = face_cycles(P)
+	faces_V, faces_E = face_dual(P)
 
 	# Constructs a boundary word from a skeleton graph, 
 	# randomly picking a component to trace the boundary of.	
@@ -242,15 +254,15 @@ def unfoldings(P):
 
 		def next_edge(cur_e, cur_d):	
 			cur_d = polyomino.cw[cur_d]	
-			naf = faces_C[cur_e]
+			naf = faces_CW[cur_e]
 			while not naf in skele_cycle:
-				naf = faces_C[(naf[1], naf[0])] 
+				naf = faces_CW[(naf[1], naf[0])] 
 				cur_d = polyomino.ccw[cur_d]
 			cur_e = naf	
 			return cur_e, cur_d
 
 		# Pick a starting edge and do an in-order traversal to define an Eulerian tour.
-		start_e = list(skele_cycle)[0]
+		start_e = min(skele_cycle)
 		W = ['N']
 		cur_e, cur_dir = next_edge(start_e, 'N') 
 		while not cur_e == start_e:
@@ -258,18 +270,7 @@ def unfoldings(P):
 			cur_e, cur_dir = next_edge(cur_e, cur_dir)
 		return W
 
-	def face_edges(f):
-		# Construct all edges with this midpoint
-		bad_coords = filter(lambda c: math.floor(f[c] + 0.6) == f[c], [0, 1, 2])
-		okp = [list(f), list(f), list(f), list(f)]
-		delta = [(-1, -1), (-1, 1), (1, 1), (1, -1)]
-		for i in xrange(4):
-			okp[i][bad_coords[0]] = okp[i][bad_coords[0]] + 0.5*delta[i][0]
-			okp[i][bad_coords[1]] = okp[i][bad_coords[1]] + 0.5*delta[i][1]
-		return set([(tuple(okp[i]), tuple(okp[i+1])) for i in xrange(-1, 3)] + 
-			[(tuple(okp[i+1]), tuple(okp[i])) for i in xrange(-1, 3)])
-
-	def graph_to_boundary_word(T):
+	def tree_to_boundary_word(T):
 		T_V = set([e[0] for e in T] + [e[1] for e in T])
 		# Take dual edges of those not in T
 		comp_T = faces_E - T 
@@ -277,20 +278,16 @@ def unfoldings(P):
 		# the boundary of T clockwise
 		skele_cycle = set([])
 		for e in comp_T:
-			# If edge doesn't connect to something in T
-			if (not e[0] in T_V) and (not e[1] in T_V):
-				continue 
-			cand_edges = list(set(face_edges(e[0]) & face_edges(e[1]) & set(faces_C.keys())))	
-			if faces_C[cand_edges[0]] in face_edges(e[1]):
-				cand_edges = [cand_edges[1], cand_edges[0]] 
+			# Grab the edges that The edges we want are those that run clockwise 
+			# along a face of the polycube that's *in* T 
 			if e[0] in T_V:
-				skele_cycle.add(cand_edges[0])
+				skele_cycle.update(faces_CW[e[0]] & faces_CCW[e[1]])
 			if e[1] in T_V:
-				skele_cycle.add(cand_edges[1])
+				skele_cycle.update(faces_CW[e[1]] & faces_CCW[e[0]])	
 		return skele_cycle_to_boundary_word(skele_cycle)	
-
+	
 	pT = set([])	
-	rem_E = sorted(list(faces_E))
+	rem_E = sorted(list(faces_E)) # Sort to bias towards "filling out" along X-axis?
 	G_pT = {}
 	for v in faces_V:
 		G_pT[v] = set([])
@@ -304,7 +301,9 @@ def unfoldings(P):
 				G_T_rem_E[v].add(e[0])
 
 	def nonplanar_pT():
-		return not polyomino.is_weakly_simple(graph_to_boundary_word(pT))
+		#Stronger constraint for strongly simple unfoldings: 
+		#return not polyomino.is_simple(tree_to_boundary_word(pT))
+		return not polyomino.is_weakly_simple(tree_to_boundary_word(pT))
 		
 	def recurse():
 		if len(pT) == len(faces_V) - 1:
@@ -339,7 +338,8 @@ def unfoldings(P):
 		# Recurse with slightly smaller remaining edge set.
 		G_T_rem_E[b[0]].remove(b[1])
 		G_T_rem_E[b[1]].remove(b[0])
-		if is_connected(G_T_rem_E):
+		# Gut check: can possibly finish a (connected) tree?
+		if is_connected(G_T_rem_E): 
 			for T in recurse():
 				yield T
 		G_T_rem_E[b[0]].add(b[1])
@@ -349,8 +349,7 @@ def unfoldings(P):
 		pT.add(b)
 		G_pT[b[0]].add(b[1])
 		G_pT[b[1]].add(b[0])
-		# Gut check: does T have any cycles? Die if so.
-		# For speed, only check component containing b
+		# Gut check: does T have any cycles or a nonplanar unfolding? 
 		if not (has_cycle(G_pT, b[0]) or nonplanar_pT()): 
 			for T in recurse():
 				yield T
@@ -361,7 +360,7 @@ def unfoldings(P):
 		rem_E.append(b)
 
 	for T in recurse():
-		yield graph_to_boundary_word(T)
+		yield tree_to_boundary_word(T)
 
 
 class TestStuff(unittest.TestCase):
@@ -374,58 +373,6 @@ class TestStuff(unittest.TestCase):
 		self.assertTrue(is_polycube(set([(1, 1, 1), (1, 1, 2), (1, 2, 2)])))
 		self.assertFalse(is_polycube(set([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 1)])))
 
-	def test__skeleton(self):	
-		S = skeleton(set([(0, 0, 0)])) 
-		self.assertEqual(len(S), 12)
-		h = 0.5
-		p = [(-h, -h, -h), (-h, h, -h), (h, h, -h), (h, -h, -h), (-h, -h, h), (-h, h, h), (h, h, h), (h, -h, h)]
-		# Bottom edges
-		self.assertTrue((p[0], p[1]) in S or (p[1], p[0]) in S)
-		self.assertTrue((p[1], p[2]) in S or (p[2], p[1]) in S)
-		self.assertTrue((p[2], p[3]) in S or (p[3], p[2]) in S)
-		self.assertTrue((p[0], p[3]) in S or (p[3], p[0]) in S)
-		# Top edges
-		self.assertTrue((p[4], p[5]) in S or (p[5], p[4]) in S)
-		self.assertTrue((p[5], p[6]) in S or (p[6], p[5]) in S)
-		self.assertTrue((p[6], p[7]) in S or (p[7], p[6]) in S)
-		self.assertTrue((p[4], p[7]) in S or (p[7], p[4]) in S)
-		# Vertical edges
-		self.assertTrue((p[0], p[4]) in S or (p[4], p[0]) in S)
-		self.assertTrue((p[1], p[5]) in S or (p[5], p[1]) in S)
-		self.assertTrue((p[2], p[6]) in S or (p[6], p[2]) in S)
-		self.assertTrue((p[3], p[7]) in S or (p[7], p[3]) in S)
-			
-		S = skeleton(set([(0, 0, 0), (0, 0, 1)]))
-		th = 1.5
-		p = [(-h, -h, -h), (-h, h, -h), (h, h, -h), (h, -h, -h), 
-			(-h, -h, h), (-h, h, h), (h, h, h), (h, -h, h),
-			(-h, -h, th), (-h, h, th), (h, h, th), (h, -h, th)]
-		# Bottom edges
-		self.assertTrue((p[0], p[1]) in S or (p[1], p[0]) in S)
-		self.assertTrue((p[1], p[2]) in S or (p[2], p[1]) in S)
-		self.assertTrue((p[2], p[3]) in S or (p[3], p[2]) in S)
-		self.assertTrue((p[0], p[3]) in S or (p[3], p[0]) in S)
-		# Middle edges
-		self.assertTrue((p[4], p[5]) in S or (p[5], p[4]) in S)
-		self.assertTrue((p[5], p[6]) in S or (p[6], p[5]) in S)
-		self.assertTrue((p[6], p[7]) in S or (p[7], p[6]) in S)
-		self.assertTrue((p[4], p[7]) in S or (p[7], p[4]) in S)
-		# Top edges
-		self.assertTrue((p[8], p[9]) in S or (p[8], p[9]) in S)
-		self.assertTrue((p[9], p[10]) in S or (p[10], p[9]) in S)
-		self.assertTrue((p[10], p[11]) in S or (p[11], p[10]) in S)
-		self.assertTrue((p[8], p[11]) in S or (p[11], p[8]) in S)
-		# Lower vertical edges
-		self.assertTrue((p[0], p[4]) in S or (p[4], p[0]) in S)
-		self.assertTrue((p[1], p[5]) in S or (p[5], p[1]) in S)
-		self.assertTrue((p[2], p[6]) in S or (p[6], p[2]) in S)
-		self.assertTrue((p[3], p[7]) in S or (p[7], p[3]) in S)
-		# Upper vertical edges
-		self.assertTrue((p[4], p[8]) in S or (p[8], p[4]) in S)
-		self.assertTrue((p[5], p[9]) in S or (p[9], p[5]) in S)
-		self.assertTrue((p[6], p[10]) in S or (p[10], p[6]) in S)
-		self.assertTrue((p[7], p[11]) in S or (p[11], p[7]) in S)
-
 	def test__unfoldings(self):
 		# All unfoldings of cube tile
 		count = 0
@@ -433,22 +380,51 @@ class TestStuff(unittest.TestCase):
 			count = count + 1
 			self.assertTrue(polyomino.is_polyomino(uf))
 			self.assertTrue(isohedral.has_translation_tiling(uf) or isohedral.has_half_turn_tiling(uf))
-		self.assertEqual(count, ((2*1)**3 * (2*2)**3 * (2*3)**1) / 8) 
-		# Some unfolding of a tricube
-		tiler = False
+		self.assertEqual(count, 384) # 384 = ((2*1)**3 * (2*2)**3 * (2*3)**1) / 8 
+		# A little sampling of the dicube
+		nontiling_count = 0
+		tiling_count = 0
+		for uf in unfoldings(set([(0, 0, 0), (1, 0, 0)])):
+			cuf = polyomino.cancel(uf)
+			self.assertTrue(polyomino.is_polyomino(cuf)) 
+			if (isohedral.has_translation_tiling(cuf) or isohedral.has_half_turn_tiling(cuf)):
+				tiling_count = tiling_count + 1
+			else:
+				nontiling_count = nontiling_count + 1
+			if nontiling_count + tiling_count == 13 + 61:
+				break
+		self.assertEqual(nontiling_count, 13)
+		self.assertEqual(tiling_count, 61)
+		# A little sampling of some lame tricube
+		nontiling_count = 0
+		tiling_count = 0
 		for uf in unfoldings(set([(0, 0, 0), (1, 0, 0), (2, 0, 0)])):
 			cuf = polyomino.cancel(uf)
-			if (polyomino.is_polyomino(cuf) and 
-				(isohedral.has_translation_tiling(cuf) or isohedral.has_half_turn_tiling(cuf))):
-				tiler = True
+			self.assertTrue(polyomino.is_polyomino(cuf)) 
+			if (isohedral.has_translation_tiling(cuf) or isohedral.has_half_turn_tiling(cuf)):
+				tiling_count = tiling_count + 1
+			else:
+				nontiling_count = nontiling_count + 1
+			if nontiling_count + tiling_count == 78 + 34:
 				break
-		self.assertTrue(tiler)
+		self.assertEqual(nontiling_count, 78)
+		self.assertEqual(tiling_count, 34)
+		# A little sampling of some lame pentacube
+		nontiling_count = 0
+		for uf in unfoldings(set([(0, 0, 0), (0, 1, 0), (0, 2, 0), (0, 3, 0), (1, 0, 0)])):
+			cuf = polyomino.cancel(uf)
+			if not (isohedral.has_translation_tiling(cuf) or isohedral.has_half_turn_tiling(cuf)):
+				nontiling_count = nontiling_count + 1
+			else:
+				break
+		self.assertEqual(nontiling_count, 5)
 
 	def test__unfolding_count(self):
 		self.assertEqual(unfolding_count(set([(0, 0, 0)])), ((2*1)**3 * (2*2)**3 * (2*3)**1) / 8)
 
 	def test__face_dual(self):
-		E = face_dual(set([(0, 0, 0)]))
+		V, E = face_dual(set([(0, 0, 0)]))
+		self.assertEqual(len(V), 6) 
 		self.assertEqual(len(E), 12) 
 
 	def test__has_cycle(self):
@@ -478,5 +454,4 @@ class TestStuff(unittest.TestCase):
 
 if __name__ == '__main__':
 	unittest.main()
-	#print len([uf for uf in unfoldings(set([(0, 0, 0), (1, 0, 0)]))])
 
