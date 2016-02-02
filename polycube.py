@@ -161,63 +161,62 @@ def face_cycles(P):
 				(c[0]+0.5, c[1]+0.5, c[2]-0.5),
 				(c[0]+0.5, c[1]-0.5, c[2]-0.5),
 				(c[0]+0.5, c[1]-0.5, c[2]+0.5)]
-			G[(c[0]+0.5, c[1], c[2])] = set([])
+			f = (c[0]+0.5, c[1], c[2])
+			G[f] = {}
 			for i in xrange(4):
-				G[(c[0]+0.5, c[1], c[2])].add((verts[i-2], verts[i-1]))
-				G[(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
+				G[f][(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
 
 		if not (c[0] - 1, c[1], c[2]) in P:
 			verts = [(c[0]-0.5, c[1]+0.5, c[2]+0.5), 
 				(c[0]-0.5, c[1]-0.5, c[2]+0.5),
 				(c[0]-0.5, c[1]-0.5, c[2]-0.5),
 				(c[0]-0.5, c[1]+0.5, c[2]-0.5)]
-			G[(c[0]-0.5, c[1], c[2])] = set([])
+			f = (c[0]-0.5, c[1], c[2])
+			G[f] = {}
 			for i in xrange(4):
-				G[(c[0]-0.5, c[1], c[2])].add((verts[i-2], verts[i-1]))
-				G[(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
+				G[f][(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
 		if not (c[0], c[1]+1, c[2]) in P:
 			verts = [(c[0]-0.5, c[1]+0.5, c[2]+0.5), 
 				(c[0]-0.5, c[1]+0.5, c[2]-0.5),
 				(c[0]+0.5, c[1]+0.5, c[2]-0.5),
 				(c[0]+0.5, c[1]+0.5, c[2]+0.5)]
-			G[(c[0], c[1]+0.5, c[2])] = set([])
+			f = (c[0], c[1]+0.5, c[2])
+			G[f] = {}
 			for i in xrange(4):
-				G[(c[0], c[1]+0.5, c[2])].add((verts[i-2], verts[i-1]))
-				G[(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
+				G[f][(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
 		if not (c[0], c[1]-1, c[2]) in P:
 			verts = [(c[0]+0.5, c[1]-0.5, c[2]+0.5), 
 				(c[0]+0.5, c[1]-0.5, c[2]-0.5),
 				(c[0]-0.5, c[1]-0.5, c[2]-0.5),
 				(c[0]-0.5, c[1]-0.5, c[2]+0.5)]
-			G[(c[0], c[1]-0.5, c[2])] = set([])
+			f = (c[0], c[1]-0.5, c[2])
+			G[f] = {}
 			for i in xrange(4):
-				G[(c[0], c[1]-0.5, c[2])].add((verts[i-2], verts[i-1]))
-				G[(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
+				G[f][(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
 		if not (c[0], c[1], c[2]+1) in P:
 			verts = [(c[0]-0.5, c[1]-0.5, c[2]+0.5), 
 				(c[0]-0.5, c[1]+0.5, c[2]+0.5),
 				(c[0]+0.5, c[1]+0.5, c[2]+0.5),
 				(c[0]+0.5, c[1]-0.5, c[2]+0.5)]
-			G[(c[0], c[1], c[2]+0.5)] = set([])
+			f = (c[0], c[1], c[2]+0.5)
+			G[f] = {}
 			for i in xrange(4):
-				G[(c[0], c[1], c[2]+0.5)].add((verts[i-2], verts[i-1]))
-				G[(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
+				G[f][(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
 		if not (c[0], c[1], c[2]-1) in P:
 			verts = [(c[0]+0.5, c[1]-0.5, c[2]-0.5), 
 				(c[0]+0.5, c[1]+0.5, c[2]-0.5),
 				(c[0]-0.5, c[1]+0.5, c[2]-0.5),
 				(c[0]-0.5, c[1]-0.5, c[2]-0.5)]
-			G[(c[0], c[1], c[2]-0.5)] = set([])
+			f = (c[0], c[1], c[2]-0.5)
+			G[f] = {}
 			for i in xrange(4):
-				G[(c[0], c[1], c[2]-0.5)].add((verts[i-2], verts[i-1]))
-				G[(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
+				G[f][(verts[i-2], verts[i-1])] = (verts[i-1], verts[i])
 	CCW_G = {}
-	for k in G:
-		if len(G[k]) == 4: # Face!
-			CCW_G[k] = set([(e[1], e[0]) for e in G[k]])
-		else: # Edge!
-			next_e = G[k]
-			CCW_G[(next_e[1], next_e[0])] = (k[1], k[0])
+	for f in G:
+		CCW_G[f] = {}
+		for e in G[f]:
+			next_e = G[f][e]
+			CCW_G[f][(next_e[1], next_e[0])] = (e[1], e[0])
 	return G, CCW_G
 
 def face_dual(P):
@@ -297,35 +296,36 @@ def unfoldings(P):
 			# borders another face not in pT
 			if len(G_pT[v]) != 1:
 				continue
-			cur_v = v
+			start_v = v
 			for e in faces_CW[v]:
-				if not (e in faces_CCW[min(G_pT[v])]) and not (faces_CW[e] in faces_CCW[min(G_pT[v])]):
+				if not (e in faces_CCW[min(G_pT[v])]) and not (faces_CW[v][e] in faces_CCW[min(G_pT[v])]):
 					start_e = e
 			break	
 
 		W = [polyomino.cw['S']]
+		cur_v = start_v
 		cur_d = polyomino.cw['S']
-		cur_e = faces_CW[start_e]
-		while cur_e != start_e:
-			adjoining_edges = {}
+		cur_e = faces_CW[cur_v][start_e]
+		while (cur_e, cur_v) != (start_e, start_v):
+			edge2neigh_v = {}
 			for neigh_v in G_pT[cur_v]:
-				adjoining_edges[min(faces_CCW[neigh_v] & faces_CW[cur_v])] = neigh_v	
-			if cur_e in adjoining_edges: # Not an edge of tree's boundary
+				edge2neigh_v[min(set(faces_CCW[neigh_v]) & set(faces_CW[cur_v]))] = neigh_v	
+			if cur_e in edge2neigh_v: # Not an edge of tree's boundary
 				# Move to the adjoining cell
-				cur_v = adjoining_edges[cur_e]
-				cur_e = faces_CW[(cur_e[1], cur_e[0])]
+				cur_v = edge2neigh_v[cur_e]
+				cur_e = faces_CW[cur_v][(cur_e[1], cur_e[0])]
 				cur_d = polyomino.cw[polyomino.comp[cur_d]]
 			else:	# An edge of the tree's boundary
 				# Add the current edge to the boundary word
 				W.append(polyomino.cw[cur_d])
 				cur_d = polyomino.cw[cur_d]
-				cur_e = faces_CW[cur_e]
+				cur_e = faces_CW[cur_v][cur_e]
 		return W
 
 	def nonplanar_pT():
 		#Stronger constraint for strongly simple unfoldings: 
-		#return not polyomino.is_simple(tree_to_boundary_word())
-		return not polyomino.is_weakly_simple(tree_to_boundary_word())
+		return not polyomino.is_simple(tree_to_boundary_word())
+		#return not polyomino.is_weakly_simple(tree_to_boundary_word())
 		
 	def recurse():
 		pT_edge_count = sum([len(G_pT[v]) for v in G_pT]) / 2
@@ -337,7 +337,7 @@ def unfoldings(P):
 		if len(rem_E) + pT_edge_count < len(faces_V) - 1:
 			return
 		# Adversarily decide on an edge b to branch on.
-		# Thus look for one that kills one of the two branches.
+		# Look for one that kills one or both of the two branches.
 		branch1_killer = '?'
 		branch2_killer = '?'
 		for pb in rem_E:
@@ -365,33 +365,33 @@ def unfoldings(P):
 		b = '?'
 		if branch2_killer != '?':
 			b = branch2_killer
-		if b == '?':
+		elif branch1_killer != '?':
 			b = branch1_killer
 		# If neither branch can be killed, pick something
-		# that's connected to the stuff you're growing
+		# that's connected to the partial tree that's growing
 		if b == '?':
-			b = rem_E[0] # If you haven't even grown anything, just pick any edge
+			b = rem_E[0] # If nothing has been grown, pick an edge
 			for pb in rem_E:
 				if len(G_pT[pb[0]]) + len(G_pT[pb[1]]) > 0:
 					b = pb 
 					break 
 		rem_E.remove(b)
 
-		# Recursion 1: b is not included. 
+		# Recursion branch 1: b is not included. 
 		# Recurse with slightly smaller remaining edge set.
 		G_T_rem_E[b[0]].remove(b[1])
 		G_T_rem_E[b[1]].remove(b[0])
-		# Gut check: can possibly finish a (connected) tree?
+		# Branch killer 1: cannot possibly finish a (connected) tree?
 		if is_connected(G_T_rem_E): 
 			for W in recurse():
 				yield W
 		G_T_rem_E[b[0]].add(b[1])
 		G_T_rem_E[b[1]].add(b[0])
-		# Recursion 2: b is included.
+		# Recursion branch 2: b is included.
 		# Recurse with slightly smaller remaining edge set and tree
 		G_pT[b[0]].add(b[1])
 		G_pT[b[1]].add(b[0])
-		# Gut check: does T have any cycles or a nonplanar unfolding? 
+		# Branch killer 2: T has a cycles or a nonplanar unfolding? 
 		if not (has_cycle(G_pT, b[0]) or nonplanar_pT()): 
 			for W in recurse():
 				yield W
