@@ -120,6 +120,8 @@ def spanning_tree_count(G):
 		return total
 		"""
 	V = list(G.keys()) # Need V to be indexable
+	if len(V) <= 1:
+		return 1
 	A = [[0] * len(V) for i in xrange(len(V))]
 	for i in xrange(len(V)):
 		for j in xrange(len(V)):
@@ -322,22 +324,38 @@ def unfoldings(P):
 				cur_e = faces_CW[cur_v][cur_e]
 		return W
 
+	def skipped_count():
+		contract_G = {'pT': set([])}
+		vmap = {}
+		for v in G_T_rem_E:
+			if len(G_pT[v]) > 0: # If in partial (connected) tree
+				vmap[v] = 'pT'
+			else:
+				vmap[v] = v
+				contract_G[v] = set([])
+		for v in G_T_rem_E:
+			for neigh in G_T_rem_E[v]:
+				contract_G[vmap[v]].add(vmap[neigh])
+		return spanning_tree_count(contract_G)	
+
 	def nonplanar_pT():
 		#Stronger constraint for strongly simple unfoldings: 
-		return not polyomino.is_simple(tree_to_boundary_word())
-		#return not polyomino.is_weakly_simple(tree_to_boundary_word())
-		
+		#return not polyomino.is_simple(tree_to_boundary_word())
+		return not polyomino.is_weakly_simple(tree_to_boundary_word())
+	
+	stats = [0, 0]
 	def recurse():
 		pT_edge_count = sum([len(G_pT[v]) for v in G_pT]) / 2
 		# If the number of edges is right
 		if pT_edge_count == len(faces_V) - 1:
+			stats[0] = stats[0] + 1
 			yield tree_to_boundary_word()
 			return
 		# If there aren't enough edges left to make a tree
 		if len(rem_E) + pT_edge_count < len(faces_V) - 1:
 			return
 		# Adversarily decide on an edge b to branch on.
-		# Look for one that kills one or both of the two branches.
+		# Look for one that kills one or both(!) of the two branches.
 		branch1_killer = '?'
 		branch2_killer = '?'
 		for pb in rem_E:
@@ -360,7 +378,7 @@ def unfoldings(P):
 
 			# If you can kill both branches, do it
 			if branch1_killer == pb and branch2_killer == pb:
-				return 
+				break
 		# Take branch 2 killer preferably (branch 1 is closer to end b/c edge starvation)
 		b = '?'
 		if branch2_killer != '?':
@@ -392,17 +410,23 @@ def unfoldings(P):
 		G_pT[b[0]].add(b[1])
 		G_pT[b[1]].add(b[0])
 		# Branch killer 2: T has a cycles or a nonplanar unfolding? 
-		if not (has_cycle(G_pT, b[0]) or nonplanar_pT()): 
-			for W in recurse():
-				yield W
+		if not has_cycle(G_pT, b[0]):
+			if nonplanar_pT(): 
+				stats[1] = stats[1] + skipped_count()
+			else:
+				for W in recurse():
+					yield W
 		# Restore variables
 		G_pT[b[0]].remove(b[1])
 		G_pT[b[1]].remove(b[0])
 		rem_E.append(b)
 
+	total_unfoldings = spanning_tree_count(G_T_rem_E)
 	for W in recurse():
+		sys.stdout.write("\rProgress: " + str(stats[0]+stats[1]) + " / " + str(total_unfoldings) + " or " + 
+			str((stats[0]+stats[1])/total_unfoldings) + "% done (" + str(stats[0]) + " enumerated).")
+		sys.stdout.flush()
 		yield W
-
 
 class TestStuff(unittest.TestCase):
 	
