@@ -3,7 +3,7 @@ import unittest
 import copy
 
 # The alphabet for the boundary words
-A = {'N', 'E', 'S', 'W'}
+A = set(['N', 'E', 'S', 'W'])
 
 # Some useful mappings
 dir2vec = {'N': (0, 1), 'E': (1, 0), 'S': (0, -1), 'W': (-1, 0)}
@@ -11,6 +11,12 @@ comp = {'N': 'S', 'S': 'N', 'E': 'W', 'W': 'E'}
 vec2dir = {(0, 1): 'N', (1, 0): 'E', (0, -1): 'S', (-1, 0): 'W'}
 cw = {'N': 'E', 'E': 'S', 'S': 'W', 'W': 'N'}
 ccw = {'N': 'W', 'E': 'N', 'S': 'E', 'W': 'S'}
+refl = {-45: {'N': 'W', 'E': 'S', 'S': 'E', 'W': 'N'}, 
+	0: {'N': 'S', 'E': 'E', 'S': 'N', 'W': 'W'},
+	45: {'N': 'E', 'E': 'N', 'S': 'W', 'W': 'S'},
+	90: {'N': 'N', 'E': 'W', 'S': 'S', 'W': 'E'}} 
+
+
 
 # Input: a list W of element of A
 # Output: W with adjacent opposite direction elements removed
@@ -60,6 +66,35 @@ def word2polyomino(W):
 			if len(filter(lambda e: e > y, column2edges[x])) % 2 == 1:
 				cells.append((x, y))
 	return set(cells)	 
+
+# Input: a polyomino boundary word W
+# Output: whether W describes an orthogonally convex polyomino
+def is_orthoconvex(W):
+	verts = boundary_word2vertices(W)
+	x_coords = [v[0] for v in verts]
+	y_coords = [v[1] for v in verts]
+
+	i = -1
+	while i < len(verts) and x_coords[i-1] <= x_coords[i]: 
+		i = i + 1
+	while i < len(verts) and x_coords[i-1] >= x_coords[i]: 
+		i = i + 1
+	while i < len(verts) and x_coords[i-1] <= x_coords[i]: 
+		i = i + 1
+	if i != len(verts):
+		return False
+
+	i = -1
+	while i < len(verts) and y_coords[i-1] <= y_coords[i]: 
+		i = i + 1
+	while i < len(verts) and y_coords[i-1] >= y_coords[i]: 
+		i = i + 1
+	while i < len(verts) and y_coords[i-1] <= y_coords[i]: 
+		i = i + 1
+	if i != len(verts):
+		return False
+	
+	return True	
 
 # Input: a list W of elements of A
 # Output: whether W describes a non-self-intersecting path
@@ -112,6 +147,16 @@ def boundary_word2vertices(W):
 		current = (current[0] + dir2vec[W[i]][0], current[1] + dir2vec[W[i]][1])
 		verts.append(current)
 	return verts 
+
+# Input: a lattice path
+# Output: the vertices of the lattice path
+def lattice_path2vertices(W):
+	current = (0, 0)
+	verts = [(0, 0)]
+	for i in xrange(len(W)):
+		current = (current[0] + dir2vec[W[i]][0], current[1] + dir2vec[W[i]][1])
+		verts.append(current)
+	return verts 
 	
 # Input: a list of 2-tuples of numbers describing the vertices of a simple polygon 
 # Output: the area of the polygon
@@ -156,6 +201,134 @@ def enumerate_boundary_words(n):
 				path.pop() 
 	for w in recurse():
 		yield w
+
+# Input: a length l
+# Output: all strongly simple paths of length l
+def enumerate_strongly_simple_paths(l):
+	if l == 0:
+		yield []
+		return
+	W = []
+	def recurse(W):
+		if len(W) == l:
+			yield W
+			return
+		for next_d in A:
+			if next_d == comp[W[-1]]:
+				continue
+			W.append(next_d)
+			if len(set(lattice_path2vertices(W))) == len(W)+1:
+				for RW in recurse(W):
+					yield RW	
+			W.pop()
+	for s in A:
+		W.append(s)
+		for RW in recurse(W):
+			yield RW
+		W.pop()
+
+# Input: a length l
+# Output: all strongly simple palindromic paths of length l
+def enumerate_strongly_simple_palindromes(l):	
+	if l == 0:
+		yield []
+		return
+	if l == 1:
+		for d in A:
+			yield [d]
+		return
+	W = []
+	def recurse(W):
+		if not len(W) < l/2:
+			if l % 2 == 0:
+				yield W[::-1] + W
+			else: # Odd length case
+				for next_d in A:
+					if next_d == comp[W[0]]:
+						continue
+					cand = W[::-1] + [next_d] + W
+					if len(set(lattice_path2vertices(cand))) == len(cand)+1:
+						yield cand 
+			return
+		for next_d in A:
+			if next_d == comp[W[-1]]:
+				continue
+			W.append(next_d)
+			if len(set(lattice_path2vertices(W[::-1] + W))) == 2*len(W)+1: 
+				for RW in recurse(W):
+					yield RW
+			W.pop() 
+
+	for s in A:
+		W.append(s)
+		for RW in recurse(W):
+			yield RW
+		W.pop()
+
+# Input: a length l
+# Output: all strongly simple double palindromic paths of length l
+def enumerate_strongly_simple_double_palindromes(l):
+	for l1 in xrange(l+1):
+		for l2 in xrange(l-1-l1):
+			for p1 in enumerate_strongly_simple_palindromes(l1):
+				for p2 in enumerate_strongly_simple_palindromes(l2):
+					cand = p1 + p2
+					if len(set(lattice_path2vertices(cand))) == len(cand)+1:
+						yield cand 
+	for p in enumerate_strongly_simple_palindromes(l):
+		yield p
+
+# Input: a length l
+# Output: all strongly simple boundary words of length l obeying conways criterion
+def enumerate_conways_boundary_words(l, a):
+	vec2dp = {}
+	vecs = set([])
+	for dp in enumerate_strongly_simple_double_palindromes(l):
+		verts = lattice_path2vertices(dp)
+		vec = (verts[-1][0] - verts[0][0], verts[-1][1] -  verts[0][1])
+		if not (vec, len(dp)) in vec2dp:
+			vec2dp[(vec, len(dp))] = []
+		vec2dp[(vec, len(dp))].append(dp)
+		vecs.add(vec)
+
+	def enumerate_partitions(rem, p, l23min):
+		if len(p) == 0:
+			for i in xrange(2*rem+1):
+				p.append(i)
+				for r in enumerate_partitions(rem-2*i, p, l23min):
+					yield r
+				p.pop()
+		elif len(p) < 3: # l2, l3	
+			for i in xrange(l23min, rem+1):
+				p.append(i)
+				for r in enumerate_partitions(rem-i, p, l23min):
+					yield r
+				p.pop()
+		else:
+			if p[0]*2 + p[1] + p[2] == l:
+				yield p	
+	
+	def mag(vec):
+		return abs(vec[0]) + abs(vec[1])
+
+	for vec in vecs:
+		nvec = (-vec[0], -vec[1])
+		for part in enumerate_partitions(l, [], mag(vec)):
+			l1 = part[0]
+			l2 = part[1]
+			l3 = part[2]
+			if (not (vec, l2) in vec2dp) or (not (nvec, l3) in vec2dp):
+				continue 
+			for A in enumerate_strongly_simple_paths(l1):
+				A_hat = [comp[s] for s in A[::-1]]
+				for dp1 in vec2dp[(vec, l2)]:
+					if not is_simple(A + dp1 + A_hat):
+						continue
+					for dp2 in vec2dp[(nvec, l3)]:
+						cand = A + dp1 + A_hat + dp2
+						if is_polyomino(cand) and area(cand) <= a:
+							yield cand
+					 
 
 class TestStuff(unittest.TestCase):
 
@@ -265,6 +438,8 @@ class TestStuff(unittest.TestCase):
 		self.assertEqual(cancel(['N', 'E', 'N', 'S', 'S', 'W']), ['N', 'E', 'S', 'W'])
 		self.assertEqual(cancel(['S', 'S', 'W', 'N', 'E', 'N']), ['S', 'W', 'N', 'E'])
 		self.assertEqual(cancel(['N', 'E', 'N', 'S', 'S', 'E', 'W', 'W']), ['N', 'E', 'S', 'W'])
+		self.assertEqual(cancel(['N', 'N', 'E', 'E', 'S', 'S']), ['E', 'E'])
+		self.assertEqual(cancel(['N', 'N', 'W', 'S', 'E', 'E', 'S', 'S']), ['S', 'E'])
 		W = ['N', 'S']
 		cancel(W)
 		self.assertEqual(W, ['N', 'S'])
