@@ -6,6 +6,8 @@ import copy
 import numpy
 import sys
 import math
+import time
+import random
 
 # Input: an undirected graph represented as an adjacency set in a dict of sets,
 #        and a vertex of the graph v.
@@ -13,7 +15,7 @@ import math
 def has_cycle(G, v):
 	if len(G) == 0:
 		return False
-	visited = set([v])
+	visited = []
 	path = [v]
 	def recurse(parent):
 		for neigh in G[path[-1]]:
@@ -22,7 +24,7 @@ def has_cycle(G, v):
 			if neigh in visited:
 				return True
 			path.append(neigh)
-			visited.add(neigh)
+			visited.append(neigh)
 			if recurse(path[-2]):
 				return True
 			path.pop()
@@ -35,13 +37,13 @@ def has_cycle(G, v):
 #        and a vertex of this graph. 
 # Output: the number of vertices reachable from the vertex.
 def reachable(G, root):
-	visited = set([root])
+	visited = [root]
 	path = [root]
 	def recurse():
 		for neigh in G[path[-1]]:
 			if not (neigh in visited):
 				path.append(neigh)
-				visited.add(neigh)
+				visited.append(neigh)
 				recurse()
 				path.pop()
 	recurse()
@@ -53,13 +55,13 @@ def is_connected(G):
 	if len(G) == 0:
 		return True
 	root = G.keys()[0]
-	visited = set([root])
+	visited = [root]
 	path = [root]
 	def recurse():
 		for neigh in G[path[-1]]:
 			if not (neigh in visited):
 				path.append(neigh)
-				visited.add(neigh)
+				visited.append(neigh)
 				recurse()
 				path.pop()
 	recurse()
@@ -79,16 +81,20 @@ def edge_set2graph(E):
 # Input: a polycube described by a set of integer 3-tuples
 # Output: the cell dual graph
 def cell_dual(P):
-	def neighbors(cell):
-		vecs = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)]
-		return set([(cell[0] + v[0], cell[1] + v[1], cell[2] + v[2]) for v in vecs])
+	def neighbors(cell, P):
+		neighs = []
+		for vec in [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)]:
+			adj = (cell[0] + vec[0], cell[1] + vec[1], cell[2] + vec[2]) 
+			if adj in P:
+				neighs.append(adj)
+		return neighs
 
 	# Construct the dual graph
 	G = {}
 	for cell in P:
 		G[cell] = set([])
 	for cell in P:
-		for neigh in neighbors(cell) & P:
+		for neigh in neighbors(cell, P):
 			G[cell].add(neigh)
 			G[neigh].add(cell)
 	return G
@@ -248,9 +254,8 @@ def face_dual(P):
 	v2c = {}
 	V = set([])
 	E = set([])
-	unit_vecs = set([(1, 0, 0), (0, 1, 0), (0, 0, 1)])
 	for c in P:
-		for vec in unit_vecs:
+		for vec in [(1, 0, 0), (0, 1, 0), (0, 0, 1)]:
 			for sign in [-1, 1]:
 				adj_vec = tuple([sign*vec[i] for i in [0, 1, 2]])
 				if tuple([c[i] + adj_vec[i] for i in [0, 1, 2]]) in P:
@@ -388,11 +393,11 @@ def unfoldings(P):
 		# If neither branch can be killed, pick something
 		# that's connected to the partial tree that's growing
 		if b == '?':
-			b = rem_E[0] # If nothing has been grown, pick an edge
+			b = random.choice(rem_E) 
 			for pb in rem_E:
 				if len(G_pT[pb[0]]) + len(G_pT[pb[1]]) > 0:
-					b = pb 
-					break 
+					b = random.choice(filter(lambda e: len(G_pT[e[0]]) + len(G_pT[e[1]]) > 0, rem_E))
+					break
 		rem_E.remove(b)
 
 		# Recursion branch 1: b is not included. 
@@ -423,8 +428,7 @@ def unfoldings(P):
 
 	total_unfoldings = spanning_tree_count(G_T_rem_E)
 	for W in recurse():
-		sys.stdout.write("\rProgress: " + str(stats[0]+stats[1]) + " / " + str(total_unfoldings) + " or " + 
-			str((stats[0]+stats[1])/total_unfoldings) + "% done (" + str(stats[0]) + " enumerated).")
+		sys.stdout.write("\rProgress: " + str(stats[0]+stats[1]) + " (" + str(stats[0]) + ") / " + str(total_unfoldings))
 		sys.stdout.flush()
 		yield W
 
@@ -437,6 +441,7 @@ class TestStuff(unittest.TestCase):
 		self.assertTrue(is_polycube(set([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)])))
 		self.assertTrue(is_polycube(set([(1, 1, 1), (1, 1, 2), (1, 2, 2)])))
 		self.assertFalse(is_polycube(set([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 1)])))
+		self.assertTrue(is_polycube(set([(0, 1, 0), (0, 2, 0), (1, 1, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0)])))
 
 	def test__unfoldings(self):
 		# All unfoldings of cube tile
