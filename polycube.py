@@ -432,6 +432,75 @@ def unfoldings(P):
 		sys.stdout.flush()
 		yield W
 
+
+def enumerate_polycubes(n, cur=None):
+	if cur == None:
+		cur = n
+	if cur < 1:
+		return
+	if cur == 1:
+		yield set([(0, 0, 0)])
+		return
+	if cur == 2:
+		yield set([(0, 0, 0), (0, 0, 1)])
+		return
+	if cur == 3:
+		yield set([(0, 0, 0), (0, 0, 1), (0, 0, 2)])
+		yield set([(0, 1, 0), (1, 0, 0), (0, 0, 0)])
+		return
+
+	def zero(P):
+		zP = set([])
+		delta = (min([x for x, y, z in P]), min([y for x, y, z in P]), min([z for x, y, z, in P]))
+		for c in P:
+			zP.add((c[0] - delta[0], c[1] - delta[1], c[2] - delta[2]))
+		return zP
+
+	def normalized_transformations(P):
+		def rot(P, ci, cj, rep):
+			rT = set([])
+			for c in P:
+				rc = c
+				for i in xrange(rep):
+					if set([ci, cj]) == set([0, 1]): 
+						rc = (-rc[1], rc[0], rc[2])
+					elif set([ci, cj]) == set([0, 2]): 
+						rc = (-rc[2], rc[1], rc[0])
+					else: 
+						rc = (rc[0], -rc[2], rc[1])
+				rT.add(rc)
+			return rT
+		
+		trans = []
+		for rep1 in xrange(4):
+			for rep2 in xrange(4):
+				trans.append(zero(rot(rot(P, 0, 1, rep1), 0, 2, rep2)))
+			for rep3 in [1, 3]:	
+				trans.append(zero(rot(rot(P, 0, 1, rep1), 1, 2, rep3)))
+		return trans	
+
+	already_enumerated = []
+	for P in enumerate_polycubes(n, cur-1):
+		for x in xrange(min([cx for cx, cy, cz in P])-1, max([cx for cx, cy, cz in P])+2):
+			for y in xrange(min([cy for cx, cy, cz in P])-1, max([cy for cx, cy, cz in P])+2):
+				for z in xrange(min([cz for cx, cy, cz in P])-1, max([cz for cx, cy, cz in P])+2):
+					if (x, y, z) in P:
+						continue
+					cand = copy.copy(P)
+					cand.add((x, y, z))
+					if not is_polycube(cand):
+						continue
+					cand = zero(cand)
+					found = False
+					for aeP in already_enumerated:
+						if cand == aeP:
+							found = True
+							break
+					if not found:
+						yield cand
+						NT = normalized_transformations(cand)
+						already_enumerated.extend(NT)
+	
 class TestStuff(unittest.TestCase):
 	
 	def setUp(self):
@@ -486,5 +555,7 @@ class TestStuff(unittest.TestCase):
 		self.assertFalse(has_cycle({1: set([2]), 2: set([1])}, 2))
 
 if __name__ == '__main__':
-	unittest.main()
+	for i in xrange(1, 8):
+		print i, len([P for P in enumerate_polycubes(i)])
+	#unittest.main()
 
