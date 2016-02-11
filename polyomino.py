@@ -328,12 +328,59 @@ def enumerate_conways_boundary_words(l, a):
 						cand = A + dp1 + A_hat + dp2
 						if is_polyomino(cand) and area(cand) <= a:
 							yield cand
-					 
+
+# Input: a weakly simple polyomino boundary word
+# Output: the cell dual	graph as a vertex set and edge set	
+def cell_dual(W):
+	column2edges = {}
+	row2edges = {}
+	loc = (0, 0)
+	for i in xrange(len(W)):
+		if W[i] == 'E':
+			if not loc[0] in column2edges:
+				column2edges[loc[0]] = [] 
+			column2edges[loc[0]].append(loc[1])
+		elif W[i] == 'W':
+			if not loc[0]-1 in column2edges:
+				column2edges[loc[0]-1] = [] 
+			column2edges[loc[0]-1].append(loc[1])
+		elif W[i] == 'N':
+			if not loc[1] in row2edges:
+				row2edges[loc[1]] = []
+			row2edges[loc[1]].append(loc[0])
+		else: # W[i] == 'S':
+			if not loc[1]-1 in row2edges:
+				row2edges[loc[1]-1] = []
+			row2edges[loc[1]-1].append(loc[0])
+		loc = (loc[0] + dir2vec[W[i]][0], loc[1] + dir2vec[W[i]][1])
+	V = set([])
+	for x in column2edges:
+		for y in xrange(min(column2edges[x]), max(column2edges[x])+1):
+			if len(filter(lambda e: e > y, column2edges[x])) % 2 == 1:
+				V.add((x, y))
+	E = set([])
+	for c in V:
+		neigh = (c[0] + 0, c[1] + 1)
+		if neigh in V and not (neigh[1] in column2edges[neigh[0]]):
+			E.add((c, neigh))
+		neigh = (c[0] + 1, c[1])
+		if neigh in V and not (neigh[0] in row2edges[neigh[1]]):
+			E.add((c, neigh))
+	return V, E
 
 class TestStuff(unittest.TestCase):
 
 	def setUp(self):
 		pass
+
+	def test__cell_dual(self):
+		self.assertEqual(cell_dual(['N', 'N', 'N', 'E', 'E', 'E', 'S', 'S', 'S', 'W', 'W', 'W']),
+			(set([(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2), (2, 0), (2, 1), (2, 2)]), 
+				set([((0, 0), (1, 0)), ((0, 0), (0, 1)), ((1, 0), (2, 0)), ((1, 0), (1, 1)), ((2, 0), (2, 1)),
+					((0, 1), (1, 1)), ((0, 1), (0, 2)), ((1, 1), (2, 1)), ((1, 1), (1, 2)),
+					((2, 1), (2, 2)), ((0, 2), (1, 2)), ((1, 2), (2, 2))])))
+		self.assertEqual(cell_dual(['N', 'E', 'W', 'N', 'E', 'E', 'S', 'S', 'W', 'W']), 
+			(set([(0, 0), (0, 1), (1, 0), (1, 1)]), set([((0, 0), (1, 0)), ((1, 0), (1, 1)), ((0, 1), (1, 1))])))
 
 	def test__is_closed(self):
 		# Clockwise

@@ -272,6 +272,87 @@ def face_dual(P):
 				V.add(vert) 
 	return V, E
 
+# Input: a polycube and a weakly simple boundary word
+# Output: whether the weakly simple polyomino given is an unfolding
+#         of the polycube's surface.
+def is_unfolding(P, U):
+	faces_CW, faces_CCW = face_cycles(P)
+	P_dual_V, P_dual_E = face_dual(P)
+
+	P_G = {}
+	for v in P_dual_V:
+		P_G[v] = []
+	for e in P_dual_E:
+		P_G[e[0]].append(e[1])
+		P_G[e[1]].append(e[0])
+
+	def consistent(P_G, P_root, U_G, U_root):
+		# Do a syncronized DFS through both graphs
+		P_visited = [P_root]
+		U_visited = [U_root]
+		P_path = [P_root]
+		U_path = [U_root]
+		def recurse(cur_P_d, cur_P_e):
+			for U_neigh in U_G[U_path[-1]]:
+				if U_neigh in U_visited:
+					continue
+				next_P_d = cur_P_d
+				next_P_e = cur_P_e
+				# Determine direction of neigh
+				neigh_vec = (U_neigh[0] - U_path[-1][0], U_neigh[1] - U_path[-1][1]) 
+				neigh_d = polyomino.vec2dir[neigh_vec]
+				# Compute adjacent face in P of same dir
+				while next_P_d != neigh_d:
+					next_P_e = faces_CW[P_path[-1]][next_P_e]
+					next_P_d = polyomino.cw[next_P_d]
+				P_neigh = '?'
+				for v in P_G[P_path[-1]]:
+					if next_P_e in faces_CCW[v]:
+						P_neigh = v
+						next_P_d = polyomino.comp[next_P_d]
+						next_P_e = (next_P_e[1], next_P_e[0])
+						break
+				assert P_neigh != '?'
+				U_path.append(U_neigh)
+				U_visited.append(U_neigh)
+				P_path.append(P_neigh)
+				P_visited.append(P_neigh)
+				recurse(next_P_d, next_P_e)
+				U_path.pop()
+				P_path.pop()
+		# Start with arbitrary choice of north meaning a specific edge of the root
+		# Note: must pick this edge the same way for all inputs with same P_root
+		recurse('N', min(faces_CW[P_root]))
+		return len(set(P_visited)) == len(P_G) 
+
+	# Assumes north is the same in P and U
+	def has_unfolding(P, U):
+		U_dual_V, U_dual_E = polyomino.cell_dual(U)
+		U_G = {}
+		for v in U_dual_V:
+			U_G[v] = []
+		for e in U_dual_E:
+			U_G[e[0]].append(e[1])	
+			U_G[e[1]].append(e[0])	
+	
+		for P_root in P_G:
+			for U_root in U_G:
+				if consistent(P_G, P_root, U_G, U_root):
+					return True
+		return False
+		
+		
+	# For orientation of the unfolding (four rotations x 2 reflections)
+	for rep in xrange(4): 
+		tU = [d for d in U]
+		for i in xrange(rep):
+			tU = [polyomino.cw[d] for d in tU]
+		if has_unfolding(P, tU):
+			return True
+		tU = [polyomino.refl[0][d] for d in tU]
+		if has_unfolding(P, tU):
+			return True
+	return False
 	
 # Input: a polycube represented as a set of integer 3-tuples
 # Output: a generator of the boundary words of the polycube's unfoldings 
@@ -432,7 +513,9 @@ def unfoldings(P):
 		sys.stdout.flush()
 		yield W
 
-
+# Input: a non-negative integer
+# Output: a generator for the free (unique up to rotation & translation) polycubes
+#         with the specified number of cells.
 def enumerate_polycubes(n, cur=None):
 	if cur == None:
 		cur = n
@@ -500,6 +583,7 @@ def enumerate_polycubes(n, cur=None):
 						yield cand
 						NT = normalized_transformations(cand)
 						already_enumerated.extend(NT)
+
 	
 class TestStuff(unittest.TestCase):
 	
@@ -554,8 +638,36 @@ class TestStuff(unittest.TestCase):
 		self.assertFalse(has_cycle({1: set([2]), 2: set([1])}, 1))
 		self.assertFalse(has_cycle({1: set([2]), 2: set([1])}, 2))
 
+	def test__enumerate_polycubes(self):
+		# https://oeis.org/A000162
+		self.assertEqual(len([P for P in enumerate_polycubes(1)]), 1)
+		self.assertEqual(len([P for P in enumerate_polycubes(2)]), 1)
+		self.assertEqual(len([P for P in enumerate_polycubes(3)]), 2)
+		self.assertEqual(len([P for P in enumerate_polycubes(4)]), 8)
+		self.assertEqual(len([P for P in enumerate_polycubes(5)]), 29)
+
+	def test__is_unfolding(self):
+		cube = set([(0, 0, 0)])
+		self.assertTrue(is_unfolding(cube, ['N', 'N', 'W', 'N', 'E', 'N', 'E', 'S', 'E', 'S', 'W', 'S', 'S', 'W']))
+		self.assertTrue(is_unfolding(cube, ['N', 'N', 'E', 'S', 'E', 'E', 'E', 'S', 'S', 'W', 'N', 'W', 'W', 'W']))
+		self.assertFalse(is_unfolding(cube, ['N', 'E', 'E', 'E', 'E', 'E', 'E', 'S', 'W', 'W', 'W', 'W', 'W', 'W']))
+
+		F_pentacube = set([(0, 0, 0), (0, 1, 0), (-1, 1, 0), (0, 2, 0), (1, 2, 0)])
+		self.assertTrue(is_unfolding(F_pentacube, ['W', 'N', 'E', 'N', 'N', 'N', 'E', 'S', 'S', 'E', 'S', 'E', 
+			'S', 'S', 'E', 'S', 'S', 'S', 'S', 'W', 'W', 'W', 'N', 'E', 'E', 'N', 'N', 'W', 'N', 'N', 'S', 
+			'S', 'E', 'S', 'W', 'W', 'N', 'W', 'W', 'N', 'E', 'E', 'N', 'N', 'S', 'W']))
+		I_pentacube = set([(i, 0, 0) for i in xrange(5)])
+		self.assertFalse(is_unfolding(I_pentacube, ['W', 'N', 'E', 'N', 'N', 'N', 'E', 'S', 'S', 'E', 'S', 'E', 
+			'S', 'S', 'E', 'S', 'S', 'S', 'S', 'W', 'W', 'W', 'N', 'E', 'E', 'N', 'N', 'W', 'N', 'N', 'S', 
+			'S', 'E', 'S', 'W', 'W', 'N', 'W', 'W', 'N', 'E', 'E', 'N', 'N', 'S', 'W']))
+
+		dali_octacube = set([(0, 0, 0), (0, 0, 1), (0, 0, 2), (0, 0, 3), (-1, 0, 2), (1, 0, 2), (0, -1, 2), (0, 1, 2)])
+		self.assertTrue(is_unfolding(dali_octacube, ['N', 'N', 'E', 'S', 'N', 'N', 'N', 'W', 'N', 'E', 'E', 
+			'W', 'W', 'N', 'E', 'N', 'E', 'S', 'N', 'E', 'N', 'N', 'N', 'N', 'E', 'S', 'S', 'S', 'E', 
+			'W', 'N', 'N', 'E', 'S', 'E', 'S', 'E', 'S', 'W', 'S', 'S', 'W', 'S', 'S', 'W', 'W', 'N', 
+			'E', 'N', 'N', 'E', 'W', 'N', 'E', 'W', 'S', 'S', 'S', 'W', 'N', 'N', 'S', 'S', 'W', 'S', 
+			'S', 'S', 'S', 'W', 'W']))
+
 if __name__ == '__main__':
-	for i in xrange(1, 8):
-		print i, len([P for P in enumerate_polycubes(i)])
-	#unittest.main()
+	unittest.main()
 
