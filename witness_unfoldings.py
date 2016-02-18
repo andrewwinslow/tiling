@@ -316,7 +316,7 @@ witnesses = [
 ]
 
 count = 0
-for s in xrange(1, 6):
+for s in xrange(1, 7):
 	for P in polycube.enumerate_polycubes(s):
 		assert polycube.is_unfolding(P, witnesses[count])
 		count = count + 1
