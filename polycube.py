@@ -3,7 +3,10 @@ import unittest
 import polyomino
 import isohedral
 import copy
-import numpy
+try:
+	import numpy
+except Exception:
+	numpy = None
 import sys
 import math
 import time
@@ -109,8 +112,8 @@ def is_polycube(P):
 def spanning_tree_count(G):
 	
 	def determinant(A):
-		return int(numpy.linalg.det(A))
-		"""
+		if numpy:
+			return int(numpy.linalg.det(A))
 		# Just takes wayyyyy too long...
 		if len(A) == 2:
 			return A[0][0]*A[1][1] - A[0][1]*A[1][0]
@@ -124,7 +127,7 @@ def spanning_tree_count(G):
 					del new_A[j][i]
 				total = total + factor*determinant(new_A)
 		return total
-		"""
+		
 	V = list(G.keys()) # Need V to be indexable
 	if len(V) <= 1:
 		return 1
