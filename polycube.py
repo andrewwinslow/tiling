@@ -359,7 +359,7 @@ def is_unfolding(P, U):
 	
 # Input: a polycube represented as a set of integer 3-tuples
 # Output: a generator of the boundary words of the polycube's unfoldings 
-def unfoldings(P):
+def unfoldings(P, strongly_simple=False):
 	faces_CW, faces_CCW = face_cycles(P)
 	faces_V, faces_E = face_dual(P)
 
@@ -428,9 +428,10 @@ def unfoldings(P):
 		return spanning_tree_count(contract_G)	
 
 	def nonplanar_pT():
-		#Stronger constraint for strongly simple unfoldings: 
-		#return not polyomino.is_simple(tree_to_boundary_word())
-		return not polyomino.is_weakly_simple(tree_to_boundary_word())
+		if strongly_simple:
+			return not polyomino.is_simple(tree_to_boundary_word())
+		else:
+			return not polyomino.is_weakly_simple(tree_to_boundary_word())
 	
 	stats = [0, 0]
 	def recurse():
