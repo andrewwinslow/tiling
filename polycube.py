@@ -384,7 +384,7 @@ def unfoldings(P, strongly_simple=False):
 		cur_v = '?' 
 		for v in G_pT:
 			# Find a face edge of a vertex in pT that 
-			# borders another face not in pT
+			# borders another face not adjacent in pT
 			if len(G_pT[v]) != 1:
 				continue
 			start_v = v
@@ -394,6 +394,7 @@ def unfoldings(P, strongly_simple=False):
 			break	
 
 		W = [polyomino.cw['S']]
+		W_edges = [start_e]
 		cur_v = start_v
 		cur_d = polyomino.cw['S']
 		cur_e = faces_CW[cur_v][start_e]
@@ -409,8 +410,28 @@ def unfoldings(P, strongly_simple=False):
 			else:	# An edge of the tree's boundary
 				# Add the current edge to the boundary word
 				W.append(polyomino.cw[cur_d])
+				W_edges.append(cur_e)
 				cur_d = polyomino.cw[cur_d]
 				cur_e = faces_CW[cur_v][cur_e]
+			
+		# Glue coincident edges back together	
+		welded = False
+		while not welded:
+			welded = True
+			for i in xrange(len(W)-1):
+				if W[i] == polyomino.comp[W[i+1]] and W_edges[i][0] == W_edges[i+1][1] and W_edges[i][1] == W_edges[i+1][0]:
+					del W[i+1] 
+					del W_edges[i+1]
+					del W[i]
+					del W_edges[i]
+					welded = False
+					break
+			if W[0] == polyomino.comp[W[-1]] and W_edges[0][0] == W_edges[-1][1] and W_edges[0][1] == W_edges[-1][0]:
+				del W[-1]
+				del W_edges[-1]
+				del W[0]
+				del W_edges[0]
+				welded = False
 		return W
 
 	def skipped_count():
