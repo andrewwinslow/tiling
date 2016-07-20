@@ -359,7 +359,7 @@ def is_unfolding(P, U):
 	
 # Input: a polycube represented as a set of integer 3-tuples
 # Output: a generator of the boundary words of the polycube's unfoldings 
-def unfoldings(P, strongly_simple=False):
+def unfoldings(P, strongly_simple=False, hamiltonian=False):
 	faces_CW, faces_CCW = face_cycles(P)
 	faces_V, faces_E = face_dual(P)
 
@@ -413,7 +413,6 @@ def unfoldings(P, strongly_simple=False):
 				W_edges.append(cur_e)
 				cur_d = polyomino.cw[cur_d]
 				cur_e = faces_CW[cur_v][cur_e]
-			
 		# Glue coincident edges back together	
 		welded = False
 		while not welded:
@@ -453,7 +452,7 @@ def unfoldings(P, strongly_simple=False):
 			return not polyomino.is_simple(tree_to_boundary_word())
 		else:
 			return not polyomino.is_weakly_simple(tree_to_boundary_word())
-	
+
 	stats = [0, 0]
 	def recurse():
 		pT_edge_count = sum([len(G_pT[v]) for v in G_pT]) / 2
@@ -467,8 +466,19 @@ def unfoldings(P, strongly_simple=False):
 			return
 		# Adversarily decide on an edge b to branch on.
 		# Look for one that kills one or both(!) of the two branches.
-		branch1_killer = '?'
-		branch2_killer = '?'
+		branch1_killer = '?' # Exclusion is impossible
+		branch2_killer = '?' # Inclusion is impossible
+
+		# Assumes pb has already been added to G_pT
+		def kills_branch2(pb):
+			if has_cycle(G_pT, pb[0]):
+				return True
+			if nonplanar_pT():
+				return True
+			if hamiltonian and len(G_pT[pb[0]]) + len(G_pT[pb[1]]) > 3:
+				return True
+			return False			
+
 		for pb in rem_E:
 			# These must necessarily be connected to existing partial tree
 			if len(G_pT[pb[0]]) + len(G_pT[pb[1]]) == 0:
@@ -482,7 +492,7 @@ def unfoldings(P, strongly_simple=False):
 			
 			G_pT[pb[0]].add(pb[1])
 			G_pT[pb[1]].add(pb[0])
-			if (has_cycle(G_pT, pb[0]) or nonplanar_pT()):
+			if kills_branch2(pb):
 				branch2_killer = pb	
 			G_pT[pb[0]].remove(pb[1])
 			G_pT[pb[1]].remove(pb[0])
@@ -499,11 +509,10 @@ def unfoldings(P, strongly_simple=False):
 		# If neither branch can be killed, pick something
 		# that's connected to the partial tree that's growing
 		if b == '?':
-			b = random.choice(rem_E) 
-			for pb in rem_E:
-				if len(G_pT[pb[0]]) + len(G_pT[pb[1]]) > 0:
-					b = random.choice(filter(lambda e: len(G_pT[e[0]]) + len(G_pT[e[1]]) > 0, rem_E))
-					break
+			if pT_edge_count == 0: 
+				b = random.choice(rem_E) 
+			else:
+				b = random.choice(filter(lambda e: len(G_pT[e[0]]) + len(G_pT[e[1]]) > 0, rem_E))
 		rem_E.remove(b)
 
 		# Recursion branch 1: b is not included. 
@@ -520,9 +529,10 @@ def unfoldings(P, strongly_simple=False):
 		# Recurse with slightly smaller remaining edge set and tree
 		G_pT[b[0]].add(b[1])
 		G_pT[b[1]].add(b[0])
-		# Branch killer 2: T has a cycles or a nonplanar unfolding? 
+		# Branch killer 2: T has a cycles, a nonplanar unfolding, 
+		# or is not a path when supposed to be Hamiltonian? 
 		if not has_cycle(G_pT, b[0]):
-			if nonplanar_pT(): 
+			if kills_branch2(b):
 				stats[1] = stats[1] + skipped_count()
 			else:
 				for W in recurse():
@@ -538,7 +548,18 @@ def unfoldings(P, strongly_simple=False):
 		sys.stdout.flush()
 		yield W
 
-# Input: a non-negative integer
+# Input: a polycube
+# Output: the area of the polycube
+def surface_area(P):
+	area = 0
+	for cell in P:
+		for neighvec in [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)]:
+			neigh = (cell[0] + neighvec[0], cell[1] + neighvec[1], cell[2] + neighvec[2])
+			if not neigh in P:
+				area = area + 1
+	return area	
+
+# Input: a non-negative integer. 
 # Output: a generator for the free (unique up to rotation & translation) polycubes
 #         with the specified number of cells.
 def enumerate_polycubes(n, cur=None):
@@ -609,11 +630,22 @@ def enumerate_polycubes(n, cur=None):
 						NT = normalized_transformations(cand)
 						already_enumerated.extend(NT)
 
-	
+
+def enumerate_polycubes_with_area(area):
+	for n in xrange(1, int(math.ceil((area-2)/4)) + 1):
+		for P in enumerate_polycubes(n):
+			if surface_area(P) == area:
+				yield P
+
 class TestStuff(unittest.TestCase):
 	
 	def setUp(self):
 		pass
+
+	def test__surface_area(self):
+		self.assertEqual(6, surface_area(set([(0, 0, 0)])))
+		self.assertEqual(10, surface_area(set([(0, 0, 0), (0, 0, 1)])))
+		self.assertEqual(16, surface_area(set([(0, 0, 0), (0, 0, 1), (0, 1, 0), (0, 1, 1)])))
 
 	def test__is_polycube(self):
 		self.assertTrue(is_polycube(set([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)])))
@@ -629,6 +661,10 @@ class TestStuff(unittest.TestCase):
 			self.assertTrue(polyomino.is_polyomino(uf))
 			self.assertTrue(isohedral.has_translation_tiling(uf) or isohedral.has_half_turn_tiling(uf))
 		self.assertEqual(count, 384) # 384 = ((2*1)**3 * (2*2)**3 * (2*3)**1) / 8 
+
+		# Lean on fact that every Hamiltonian unfolding has maximum boundary 
+		for uf in unfoldings(set([(0, 0, 0)]), False, True):
+			self.assertTrue(len(uf) == 2 + 2 * surface_area(set([(0, 0, 0)])))
 
 	def test__unfolding_count(self):
 		self.assertEqual(unfolding_count(set([(0, 0, 0)])), ((2*1)**3 * (2*2)**3 * (2*3)**1) / 8)
@@ -670,6 +706,12 @@ class TestStuff(unittest.TestCase):
 		self.assertEqual(len([P for P in enumerate_polycubes(3)]), 2)
 		self.assertEqual(len([P for P in enumerate_polycubes(4)]), 8)
 		self.assertEqual(len([P for P in enumerate_polycubes(5)]), 29)
+
+	def test__enumerate_polycubes_with_area(self):
+		self.assertEqual(len([P for P in enumerate_polycubes_with_area(9)]), 0)
+		self.assertEqual(len([P for P in enumerate_polycubes_with_area(10)]), 1)
+		self.assertEqual(len([P for P in enumerate_polycubes_with_area(12)]), 0)
+		
 
 	def test__is_unfolding(self):
 		cube = set([(0, 0, 0)])
