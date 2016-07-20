@@ -278,9 +278,9 @@ def enumerate_strongly_simple_double_palindromes(l):
 	for p in enumerate_strongly_simple_palindromes(l):
 		yield p
 
-# Input: a length l
-# Output: all strongly simple boundary words of length l obeying conways criterion
-def enumerate_conways_boundary_words(l, a):
+# Input: a length l. Optionally, an area a.
+# Output: all strongly simple boundary words of length l (and area a) obeying conways criterion.
+def enumerate_conways_boundary_words(l, a=None):
 	vec2dp = {}
 	vecs = set([])
 	for dp in enumerate_strongly_simple_double_palindromes(l):
@@ -326,7 +326,9 @@ def enumerate_conways_boundary_words(l, a):
 						continue
 					for dp2 in vec2dp[(nvec, l3)]:
 						cand = A + dp1 + A_hat + dp2
-						if is_polyomino(cand) and area(cand) <= a:
+						if area != None and area(cand) != a:
+							continue
+						if is_polyomino(cand):
 							yield cand
 
 # Input: a weakly simple polyomino boundary word
