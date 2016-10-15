@@ -288,6 +288,10 @@ def is_unfolding(P, U):
 	for e in P_dual_E:
 		P_G[e[0]].append(e[1])
 		P_G[e[1]].append(e[0])
+	
+	# Fix a root of the face dual
+	max_z = max([p[2] for p in P_G.keys()])
+	P_root = min(filter(lambda p: p[2] == max_z, P_G.keys()))	
 
 	def consistent(P_G, P_root, U_G, U_root):
 		# Do a syncronized DFS through both graphs
@@ -329,7 +333,8 @@ def is_unfolding(P, U):
 		return len(set(P_visited)) == len(P_G) 
 
 	# Assumes north is the same in P and U
-	def has_unfolding(P, U):
+	# Returns the cell that's mapped to the face root or False
+	def has_unfolding(P, P_root, U):
 		U_dual_V, U_dual_E = polyomino.cell_dual(U)
 		U_G = {}
 		for v in U_dual_V:
@@ -337,24 +342,23 @@ def is_unfolding(P, U):
 		for e in U_dual_E:
 			U_G[e[0]].append(e[1])	
 			U_G[e[1]].append(e[0])	
-	
-		for P_root in P_G:
-			for U_root in U_G:
-				if consistent(P_G, P_root, U_G, U_root):
-					return True
+
+		for U_root in U_G:
+			if consistent(P_G, P_root, U_G, U_root):
+				return U_root
 		return False
 		
+	# Iterate through all possible orientations
+	for rot in [0, 90, 180, 270]:
+		rotU = [polyomino.rot[rot][d] for d in U]
+		result = has_unfolding(P, P_root, rotU)
+		if result:
+			return (P_root, result, polyomino.cell_dual(rotU)[0])
+		reflrotU = [polyomino.refl[0][d] for d in rotU]
+		result = has_unfolding(P, P_root, reflrotU) 
+		if result:
+			return (P_root, result, polyomino.cell_dual(reflrotU)[0])
 		
-	# For orientation of the unfolding (four rotations x 2 reflections)
-	for rep in xrange(4): 
-		tU = [d for d in U]
-		for i in xrange(rep):
-			tU = [polyomino.cw[d] for d in tU]
-		if has_unfolding(P, tU):
-			return True
-		tU = [polyomino.refl[0][d] for d in tU]
-		if has_unfolding(P, tU):
-			return True
 	return False
 	
 # Input: a polycube represented as a set of integer 3-tuples
@@ -364,9 +368,11 @@ def unfoldings(P, strongly_simple=False, hamiltonian=False):
 	faces_V, faces_E = face_dual(P)
 
 	rem_E = sorted(list(faces_E)) # Sort to bias towards "filling out" along X-axis?
+	# Initialize graph of partial unfolding tree
 	G_pT = {}
 	for v in faces_V:
 		G_pT[v] = set([])
+	# Initialize face dual graph of rest of surface 
 	G_T_rem_E = {}
 	for v in faces_V:
 		G_T_rem_E[v] = set([])
@@ -447,12 +453,6 @@ def unfoldings(P, strongly_simple=False, hamiltonian=False):
 				contract_G[vmap[v]].add(vmap[neigh])
 		return spanning_tree_count(contract_G)	
 
-	def nonplanar_pT():
-		if strongly_simple:
-			return not polyomino.is_simple(tree_to_boundary_word())
-		else:
-			return not polyomino.is_weakly_simple(tree_to_boundary_word())
-
 	stats = [0, 0]
 	def recurse():
 		pT_edge_count = sum([len(G_pT[v]) for v in G_pT]) / 2
@@ -473,10 +473,19 @@ def unfoldings(P, strongly_simple=False, hamiltonian=False):
 		def kills_branch2(pb):
 			if has_cycle(G_pT, pb[0]):
 				return True
-			if nonplanar_pT():
+			BW = tree_to_boundary_word()
+			if strongly_simple and not polyomino.is_simple(BW):
 				return True
-			if hamiltonian and len(G_pT[pb[0]]) + len(G_pT[pb[1]]) > 3:
+			if not polyomino.is_weakly_simple(tree_to_boundary_word()):
 				return True
+			if hamiltonian:
+				# If the partial tree is not a path
+				if len(filter(lambda v: len(G_pT[v]) > 2, G_pT.keys())) > 0:
+					return True
+				# If the partial unfolding isn't a path
+				# (two faces not adjacent on the path are adjacent on surface)
+				if len(BW) != 2 + 2 * len(filter(lambda v: len(G_pT[v]) > 0, G_pT.keys())): 
+					return True
 			return False			
 
 		for pb in rem_E:
@@ -716,13 +725,20 @@ class TestStuff(unittest.TestCase):
 	def test__is_unfolding(self):
 		cube = set([(0, 0, 0)])
 		self.assertTrue(is_unfolding(cube, ['N', 'N', 'W', 'N', 'E', 'N', 'E', 'S', 'E', 'S', 'W', 'S', 'S', 'W']))
+		self.assertTrue(is_unfolding(cube, ['E', 'E', 'N', 'E', 'S', 'E', 'S', 'W', 'S', 'W', 'N', 'W', 'W', 'N']))
+		self.assertTrue(is_unfolding(cube, ['S', 'S', 'E', 'S', 'W', 'S', 'W', 'N', 'W', 'N', 'E', 'N', 'N', 'E']))
 		self.assertTrue(is_unfolding(cube, ['N', 'N', 'E', 'S', 'E', 'E', 'E', 'S', 'S', 'W', 'N', 'W', 'W', 'W']))
 		self.assertFalse(is_unfolding(cube, ['N', 'E', 'E', 'E', 'E', 'E', 'E', 'S', 'W', 'W', 'W', 'W', 'W', 'W']))
+		
+		F_pentacube_unfolding = ['W', 'N', 'E', 'N', 'N', 'N', 'E', 'S', 'S', 'E', 'S', 'E', 
+			'S', 'S', 'E', 'S', 'S', 'S', 'S', 'W', 'W', 'W', 'N', 'E', 'E', 'N', 'N', 'W', 'N', 'N', 'S', 
+			'S', 'E', 'S', 'W', 'W', 'N', 'W', 'W', 'N', 'E', 'E', 'N', 'N', 'S', 'W']
 
 		F_pentacube = set([(0, 0, 0), (0, 1, 0), (-1, 1, 0), (0, 2, 0), (1, 2, 0)])
-		self.assertTrue(is_unfolding(F_pentacube, ['W', 'N', 'E', 'N', 'N', 'N', 'E', 'S', 'S', 'E', 'S', 'E', 
-			'S', 'S', 'E', 'S', 'S', 'S', 'S', 'W', 'W', 'W', 'N', 'E', 'E', 'N', 'N', 'W', 'N', 'N', 'S', 
-			'S', 'E', 'S', 'W', 'W', 'N', 'W', 'W', 'N', 'E', 'E', 'N', 'N', 'S', 'W']))
+		for rot in [0, 90, 180, 270]:
+			self.assertTrue(is_unfolding(F_pentacube, [polyomino.rot[rot][d] for d in F_pentacube_unfolding]))
+			self.assertTrue(is_unfolding(F_pentacube, [polyomino.refl[0][polyomino.cw[d]] for d in F_pentacube_unfolding]))
+
 		I_pentacube = set([(i, 0, 0) for i in xrange(5)])
 		self.assertFalse(is_unfolding(I_pentacube, ['W', 'N', 'E', 'N', 'N', 'N', 'E', 'S', 'S', 'E', 'S', 'E', 
 			'S', 'S', 'E', 'S', 'S', 'S', 'S', 'W', 'W', 'W', 'N', 'E', 'E', 'N', 'N', 'W', 'N', 'N', 'S', 

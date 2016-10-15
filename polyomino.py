@@ -1,6 +1,7 @@
 
 import unittest
 import copy
+import random 
 
 # The alphabet for the boundary words
 A = set(['N', 'E', 'S', 'W'])
@@ -11,6 +12,10 @@ comp = {'N': 'S', 'S': 'N', 'E': 'W', 'W': 'E'}
 vec2dir = {(0, 1): 'N', (1, 0): 'E', (0, -1): 'S', (-1, 0): 'W'}
 cw = {'N': 'E', 'E': 'S', 'S': 'W', 'W': 'N'}
 ccw = {'N': 'W', 'E': 'N', 'S': 'E', 'W': 'S'}
+rot = {0: {'N': 'N', 'E': 'E', 'S': 'S', 'W': 'W'},
+	90: {'N': 'W', 'W': 'S', 'S': 'E', 'E': 'N'},
+	180: {'N': 'S', 'W': 'E', 'S': 'N', 'E': 'W'},
+	270: {'N': 'E', 'W': 'N', 'S': 'W', 'E': 'S'}} 
 refl = {-45: {'N': 'W', 'E': 'S', 'S': 'E', 'W': 'N'}, 
 	0: {'N': 'S', 'E': 'E', 'S': 'N', 'W': 'W'},
 	45: {'N': 'E', 'E': 'N', 'S': 'W', 'W': 'S'},
@@ -484,14 +489,21 @@ class TestStuff(unittest.TestCase):
 	def test__cancel(self):
 		self.assertEqual(cancel(['S', 'N']), [])
 		self.assertEqual(cancel(['S', 'S', 'N', 'N']), [])
+		self.assertEqual(cancel(['E', 'W', 'N', 'N', 'S', 'S', 'W', 'E', 'E', 'E']), ['E', 'E'])
 		self.assertEqual(cancel(['N', 'E', 'N', 'S', 'S', 'W']), ['N', 'E', 'S', 'W'])
 		self.assertEqual(cancel(['S', 'S', 'W', 'N', 'E', 'N']), ['S', 'W', 'N', 'E'])
 		self.assertEqual(cancel(['N', 'E', 'N', 'S', 'S', 'E', 'W', 'W']), ['N', 'E', 'S', 'W'])
 		self.assertEqual(cancel(['N', 'N', 'E', 'E', 'S', 'S']), ['E', 'E'])
 		self.assertEqual(cancel(['N', 'N', 'W', 'S', 'E', 'E', 'S', 'S']), ['S', 'E'])
+		for i in xrange(100):
+			instance = [random.choice(list(A)) for j in xrange(500)]
+			cancelled = cancel(instance)
+			for j in xrange(-1, len(cancelled)-1):
+				self.assertNotEqual(cancelled[j], comp[cancelled[j+1]])
 		W = ['N', 'S']
 		cancel(W)
 		self.assertEqual(W, ['N', 'S'])
+		self.assertEqual(cancel(['N', 'S', 'E', 'E', 'N', 'S', 'E', 'N', 'S']), ['E', 'E', 'E'])
 
 	def test__word2polyomino(self):
 		self.assertEqual(word2polyomino(['N', 'E', 'S', 'W']), set([(0, 0)]))
