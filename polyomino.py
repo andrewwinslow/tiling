@@ -75,7 +75,7 @@ def word2polyomino(W):
 # Input: a polyomino boundary word W
 # Output: whether W describes an orthogonally convex polyomino
 def is_orthoconvex(W):
-	verts = boundary_word2vertices(W)
+	verts = lattice_path2vertices(W)[1:]
 	x_coords = [v[0] for v in verts]
 	y_coords = [v[1] for v in verts]
 
@@ -143,16 +143,6 @@ def is_clockwise(W):
 def is_polyomino(W):
 	return is_closed(W) and is_simple(W) and is_clockwise(W)
 
-# Input: a polyomino boundary word
-# Output: the vertices of a polyomino with this boundary word
-def boundary_word2vertices(W):
-	current = (0, 0)
-	verts = [(0, 0)]
-	for i in xrange(len(W)-1):
-		current = (current[0] + dir2vec[W[i]][0], current[1] + dir2vec[W[i]][1])
-		verts.append(current)
-	return verts 
-
 # Input: a lattice path
 # Output: the vertices of the lattice path
 def lattice_path2vertices(W):
@@ -166,7 +156,7 @@ def lattice_path2vertices(W):
 # Input: a list of 2-tuples of numbers describing the vertices of a simple polygon 
 # Output: the area of the polygon
 def area(W):
-	P = boundary_word2vertices(W)
+	P = lattice_path2vertices(W)[1:]
 	return int(0.5 * abs(sum(P[i-1][0]*P[i][1] - P[i][0]*P[i-1][1] for i in xrange(len(P)))))
 
 # Input: a polyomino boundary word
@@ -206,6 +196,24 @@ def enumerate_boundary_words(n):
 				path.pop() 
 	for w in recurse():
 		yield w
+
+# Input: two boundary words
+# Output: whether they encode the same simple polyomino
+def equivalent(W1, W2):
+	# Assumes len(U) == len(V)
+	def equal(U, V):
+		for i in xrange(len(U)):
+			if U[i] != V[i]:
+				return False
+		return True
+
+	if len(W1) != len(W2):
+		return False
+
+	for i in xrange(len(W1)):
+		if equal(W1, W2[i:] + W2[:i]):
+			return True 
+	return False
 
 # Input: a length l
 # Output: all strongly simple paths of length l
@@ -453,16 +461,16 @@ class TestStuff(unittest.TestCase):
 		self.assertFalse(is_polyomino(['N', 'E', 'S']))
 		self.assertFalse(is_polyomino(['N', 'N', 'E', 'E', 'S', 'S', 'S', 'S', 'W', 'N'])) 
 
-	def test__boundary_word2vertices(self):
-		self.assertEqual(boundary_word2vertices(['N', 'E', 'S', 'W']), [(0, 0), (0, 1), (1, 1), (1, 0)])
-		self.assertEqual(boundary_word2vertices(['N', 'N', 'E', 'S', 'S', 'W']), 
-			[(0, 0), (0, 1), (0, 2), (1, 2), (1, 1), (1, 0)])
-		self.assertEqual(boundary_word2vertices(['N', 'E', 'E', 'S', 'W', 'W']), 
-			[(0, 0), (0, 1), (1, 1), (2, 1), (2, 0), (1, 0)])
-		self.assertEqual(boundary_word2vertices(
+	def test__lattice_path2vertices(self):
+		self.assertEqual(lattice_path2vertices(['N', 'E', 'S', 'W']), [(0, 0), (0, 1), (1, 1), (1, 0), (0, 0)])
+		self.assertEqual(lattice_path2vertices(['N', 'N', 'E', 'S', 'S', 'W']), 
+			[(0, 0), (0, 1), (0, 2), (1, 2), (1, 1), (1, 0), (0, 0)])
+		self.assertEqual(lattice_path2vertices(['N', 'E', 'E', 'S', 'W', 'W']), 
+			[(0, 0), (0, 1), (1, 1), (2, 1), (2, 0), (1, 0), (0, 0)])
+		self.assertEqual(lattice_path2vertices(
 			['N', 'N', 'N', 'E', 'E', 'E', 'S', 'W', 'W', 'S', 'E', 'N', 'E', 'S', 'S', 'W', 'W', 'W']),
 			[(0, 0), (0, 1), (0, 2), (0, 3), (1, 3), (2, 3), (3, 3), (3, 2), (2, 2), (1, 2), 
-				(1, 1), (2, 1), (2, 2), (3, 2), (3, 1), (3, 0), (2, 0), (1, 0)])
+				(1, 1), (2, 1), (2, 2), (3, 2), (3, 1), (3, 0), (2, 0), (1, 0), (0, 0)])
 
 	def test__area(self):
 		self.assertEqual(area(['N', 'E', 'S', 'W']), 1)

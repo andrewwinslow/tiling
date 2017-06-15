@@ -455,6 +455,8 @@ def unfoldings(P, strongly_simple=False, hamiltonian=False):
 
 	stats = [0, 0]
 	def recurse():
+		#sys.stdout.write("\rProgress: " + str(stats[0]+stats[1]) + " (" + str(stats[0]) + ") / " + str(total_unfoldings))
+		#sys.stdout.flush()
 		pT_edge_count = sum([len(G_pT[v]) for v in G_pT]) / 2
 		# If the number of edges is right
 		if pT_edge_count == len(faces_V) - 1:
@@ -509,6 +511,7 @@ def unfoldings(P, strongly_simple=False, hamiltonian=False):
 			# If you can kill both branches, do it
 			if branch1_killer == pb and branch2_killer == pb:
 				break
+		
 		# Take branch 2 killer preferably (branch 1 is closer to end b/c edge starvation)
 		b = '?'
 		if branch2_killer != '?':
@@ -523,7 +526,7 @@ def unfoldings(P, strongly_simple=False, hamiltonian=False):
 			else:
 				b = random.choice(filter(lambda e: len(G_pT[e[0]]) + len(G_pT[e[1]]) > 0, rem_E))
 		rem_E.remove(b)
-
+	
 		# Recursion branch 1: b is not included. 
 		# Recurse with slightly smaller remaining edge set.
 		G_T_rem_E[b[0]].remove(b[1])
@@ -553,8 +556,6 @@ def unfoldings(P, strongly_simple=False, hamiltonian=False):
 
 	total_unfoldings = spanning_tree_count(G_T_rem_E)
 	for W in recurse():
-		sys.stdout.write("\rProgress: " + str(stats[0]+stats[1]) + " (" + str(stats[0]) + ") / " + str(total_unfoldings))
-		sys.stdout.flush()
 		yield W
 
 # Input: a polycube
