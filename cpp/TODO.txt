@@ -1,0 +1,3 @@
+
+Isaac will be adding a trie implementation here.
+
