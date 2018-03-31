@@ -50,6 +50,36 @@ def is_closed(W):
 		current = (current[0] + dir2vec[W[i]][0], current[1] + dir2vec[W[i]][1])
 	return current == (0, 0) 
 
+# Input: a lattice path
+# Output: the vertices of the lattice path
+# Note: This function used to be called lattice_path2vertices().
+def word2vertices(W):
+	current = (0, 0)
+	verts = [(0, 0)]
+	for i in xrange(len(W)):
+		current = (current[0] + dir2vec[W[i]][0], current[1] + dir2vec[W[i]][1])
+		verts.append(current)
+	return verts 
+
+# Input: a polyomino boundary word
+# Output: a rotation (in the word sense) of this boundary word, 
+#         where W starts at the lower-leftmost (i.e. minimum) vertex
+def normalize_rotation(W): 
+	verts = word2vertices(W)
+        o = min(verts)
+        for i in xrange(len(verts)):
+                verts[i] = (verts[i][0] - o[0], verts[i][1] - o[1])
+        verts = verts[:-1]
+        j = 0
+        while (verts[j] != (0, 0)):
+                j = j + 1
+        verts = verts[j:] + verts[:j] + [verts[j]]
+
+        WN = []
+        for i in xrange(len(verts)-1):
+                WN.append(vec2dir[(verts[i+1][0] - verts[i][0], verts[i+1][1] - verts[i][1])])
+        return WN
+
 # Input: a polyomino boundary word
 # Output: the polyomino as a set of cells specified as integer 2-tuples
 def word2polyomino(W):
@@ -72,10 +102,11 @@ def word2polyomino(W):
 				cells.append((x, y))
 	return set(cells)	 
 
+
 # Input: a polyomino boundary word W
 # Output: whether W describes an orthogonally convex polyomino
 def is_orthoconvex(W):
-	verts = lattice_path2vertices(W)[1:]
+	verts = word2vertices(W)[1:]
 	x_coords = [v[0] for v in verts]
 	y_coords = [v[1] for v in verts]
 
@@ -143,20 +174,10 @@ def is_clockwise(W):
 def is_polyomino(W):
 	return is_closed(W) and is_simple(W) and is_clockwise(W)
 
-# Input: a lattice path
-# Output: the vertices of the lattice path
-def lattice_path2vertices(W):
-	current = (0, 0)
-	verts = [(0, 0)]
-	for i in xrange(len(W)):
-		current = (current[0] + dir2vec[W[i]][0], current[1] + dir2vec[W[i]][1])
-		verts.append(current)
-	return verts 
-	
 # Input: a list of 2-tuples of numbers describing the vertices of a simple polygon 
 # Output: the area of the polygon
 def area(W):
-	P = lattice_path2vertices(W)[1:]
+	P = word2vertices(W)[1:]
 	return int(0.5 * abs(sum(P[i-1][0]*P[i][1] - P[i][0]*P[i-1][1] for i in xrange(len(P)))))
 
 # Input: a polyomino boundary word
@@ -179,6 +200,8 @@ def enumerate_boundary_words(n):
 	def recurse():
 		if len(path) > n:
 			return
+		if abs(path[-1][0]) + abs(path[-1][1]) - 2 >= n - len(path):
+			return
 		if len(path) == n:
 			if not ((0, 0) in neighbors(path[-1])):
 				return 
@@ -188,6 +211,7 @@ def enumerate_boundary_words(n):
 			if is_polyomino(word) and min(path) == (0, 0):
 				yield word
 		head = path[-1]
+		# Only grow path into locations not already on the boundary
 		for new in [(head[0], head[1]+1), (head[0]+1, head[1]), (head[0]-1, head[1]), (head[0], head[1]-1)]:
 			if not (new in path): # Check for self-intersection
 				path.append(new)
@@ -230,7 +254,7 @@ def enumerate_strongly_simple_paths(l):
 			if next_d == comp[W[-1]]:
 				continue
 			W.append(next_d)
-			if len(set(lattice_path2vertices(W))) == len(W)+1:
+			if len(set(word2vertices(W))) == len(W)+1:
 				for RW in recurse(W):
 					yield RW	
 			W.pop()
@@ -260,14 +284,14 @@ def enumerate_strongly_simple_palindromes(l):
 					if next_d == comp[W[0]]:
 						continue
 					cand = W[::-1] + [next_d] + W
-					if len(set(lattice_path2vertices(cand))) == len(cand)+1:
+					if len(set(word2vertices(cand))) == len(cand)+1:
 						yield cand 
 			return
 		for next_d in A:
 			if next_d == comp[W[-1]]:
 				continue
 			W.append(next_d)
-			if len(set(lattice_path2vertices(W[::-1] + W))) == 2*len(W)+1: 
+			if len(set(word2vertices(W[::-1] + W))) == 2*len(W)+1: 
 				for RW in recurse(W):
 					yield RW
 			W.pop() 
@@ -286,7 +310,7 @@ def enumerate_strongly_simple_double_palindromes(l):
 			for p1 in enumerate_strongly_simple_palindromes(l1):
 				for p2 in enumerate_strongly_simple_palindromes(l2):
 					cand = p1 + p2
-					if len(set(lattice_path2vertices(cand))) == len(cand)+1:
+					if len(set(word2vertices(cand))) == len(cand)+1:
 						yield cand 
 	for p in enumerate_strongly_simple_palindromes(l):
 		yield p
@@ -297,7 +321,7 @@ def enumerate_conways_boundary_words(l, a=None):
 	vec2dp = {}
 	vecs = set([])
 	for dp in enumerate_strongly_simple_double_palindromes(l):
-		verts = lattice_path2vertices(dp)
+		verts = word2vertices(dp)
 		vec = (verts[-1][0] - verts[0][0], verts[-1][1] -  verts[0][1])
 		if not (vec, len(dp)) in vec2dp:
 			vec2dp[(vec, len(dp))] = []
@@ -461,13 +485,13 @@ class TestStuff(unittest.TestCase):
 		self.assertFalse(is_polyomino(['N', 'E', 'S']))
 		self.assertFalse(is_polyomino(['N', 'N', 'E', 'E', 'S', 'S', 'S', 'S', 'W', 'N'])) 
 
-	def test__lattice_path2vertices(self):
-		self.assertEqual(lattice_path2vertices(['N', 'E', 'S', 'W']), [(0, 0), (0, 1), (1, 1), (1, 0), (0, 0)])
-		self.assertEqual(lattice_path2vertices(['N', 'N', 'E', 'S', 'S', 'W']), 
+	def test__word2vertices(self):
+		self.assertEqual(word2vertices(['N', 'E', 'S', 'W']), [(0, 0), (0, 1), (1, 1), (1, 0), (0, 0)])
+		self.assertEqual(word2vertices(['N', 'N', 'E', 'S', 'S', 'W']), 
 			[(0, 0), (0, 1), (0, 2), (1, 2), (1, 1), (1, 0), (0, 0)])
-		self.assertEqual(lattice_path2vertices(['N', 'E', 'E', 'S', 'W', 'W']), 
+		self.assertEqual(word2vertices(['N', 'E', 'E', 'S', 'W', 'W']), 
 			[(0, 0), (0, 1), (1, 1), (2, 1), (2, 0), (1, 0), (0, 0)])
-		self.assertEqual(lattice_path2vertices(
+		self.assertEqual(word2vertices(
 			['N', 'N', 'N', 'E', 'E', 'E', 'S', 'W', 'W', 'S', 'E', 'N', 'E', 'S', 'S', 'W', 'W', 'W']),
 			[(0, 0), (0, 1), (0, 2), (0, 3), (1, 3), (2, 3), (3, 3), (3, 2), (2, 2), (1, 2), 
 				(1, 1), (2, 1), (2, 2), (3, 2), (3, 1), (3, 0), (2, 0), (1, 0), (0, 0)])

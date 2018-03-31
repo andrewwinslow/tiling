@@ -148,8 +148,8 @@ def spanning_tree_count(G):
 
 # Input: a polycube represented as a set of integer 3-tuples
 # Output: the number of unfoldings
-def unfolding_count(P):
-	V, E = face_dual(P)
+def unfolding_count(P, manifold=True):
+	V, E = face_dual(P, manifold)
 	G = {}
 	for v in V:
 		G[v] = set([])
@@ -230,18 +230,11 @@ def face_cycles(P):
 			CCW_G[f][(next_e[1], next_e[0])] = (e[1], e[0])
 	return G, CCW_G
 
-def face_dual(P):
-
-	def face_edges(f):
-		bad_coords = filter(lambda c: math.floor(f[c] + 0.6) == f[c], [0, 1, 2])
-		assert len(bad_coords) == 2
-		okp = [list(f), list(f), list(f), list(f)]
-		delta = [(-1, -1), (-1, 1), (1, 1), (1, -1)]
-		for i in xrange(4):
-			okp[i][bad_coords[0]] = okp[i][bad_coords[0]] + 0.5*delta[i][0]
-			okp[i][bad_coords[1]] = okp[i][bad_coords[1]] + 0.5*delta[i][1]
-		return set([(tuple(okp[i]), tuple(okp[i+1])) for i in xrange(-1, 3)] + 
-			[(tuple(okp[i+1]), tuple(okp[i])) for i in xrange(-1, 3)])
+def face_dual(P, manifold=True):
+	faces_CW, faces_CCW = face_cycles(P)
+	for f in faces_CW:
+		faces_CW[f] = set(faces_CW[f].keys())	
+		faces_CCW[f] = set(faces_CCW[f].keys())
 
 	cell_G = cell_dual(P)
 	def cell_distance_leq_2(c1, c2):
@@ -263,24 +256,63 @@ def face_dual(P):
 				adj_vec = tuple([sign*vec[i] for i in [0, 1, 2]])
 				if tuple([c[i] + adj_vec[i] for i in [0, 1, 2]]) in P:
 					continue
-				vert = tuple([c[i] + 0.5*adj_vec[i] for i in [0, 1, 2]])
-				v2c[vert] = c
-				for v in V:
-					# Must share a common edge and not do so degenerately
-					# Non-degenerate: the faces' cells are either the same (reflex), 
-					# adjacent (flat), or distance 2 (convex)  
-					if (len(face_edges(vert) & face_edges(v)) > 0 and 
-						cell_distance_leq_2(v2c[vert], v2c[v])):
-						E.add((vert, v))
-				V.add(vert) 
-	return V, E
+				face = tuple([c[i] + 0.5*adj_vec[i] for i in [0, 1, 2]])
+				v2c[face] = c
+				for f in V:
+					# Must share a common edge and not do so degenerately 
+					if (len(faces_CW[face] & faces_CCW[f]) > 0):
+						E.add((face, f))
+					#	if (cell_distance_leq_2(v2c[face], v2c[f]))):
+					#		E.add((face, f))
+				V.add(face) 
+	# May have added connections we shouldn't have, so cull now
+	new_E = E.copy()
+	if (manifold):
+		for e in E:
+			if not cell_distance_leq_2(v2c[e[0]], v2c[e[1]]):
+				new_E.remove(e)
+	else:
+		for f in V:
+			coe2face = {} # Mapping from coincident edge to adjacent face
+			for e in E:
+				adj_f = None
+				if f == e[0]:
+					adj_f = e[1]
+				elif f == e[1]:
+					adj_f = e[0]
+				else:
+					continue
 
-# Input: a polycube and a weakly simple boundary word
+				coel = list(faces_CW[f] & faces_CCW[adj_f])
+				assert len(coel) == 1
+				coe = coel[0]
+				# If no adjacent face with this coincident edge is stored
+				if not (coe in coe2face):
+					coe2face[coe] = adj_f
+				# If stored adjacent face with this coincident edge is on same cell
+				elif v2c[coe2face[coe]] == v2c[f]:
+					# Favor face not on same cell
+					if (f, coe2face[coe]) in new_E:
+						new_E.remove((f, coe2face[coe]))	
+					if (coe2face[coe], f) in new_E:
+						new_E.remove((coe2face[coe], f))	
+					coe2face[coe] = adj_f
+				# If stored adjacent face with this coincident edge is on opposite cell:
+				else:
+					# Favor face not on same cell
+					if (f, adj_f) in new_E:
+						new_E.remove((f, adj_f))
+					if (adj_f, f) in new_E:
+						new_E.remove((adj_f, f))
+	return V, new_E
+
+# Input: a polycube and a weakly simple boundary word.
+# Optional input: whether the polycube is a manifold.
 # Output: whether the weakly simple polyomino given is an unfolding
 #         of the polycube's surface.
-def is_unfolding(P, U):
+def is_unfolding(P, U, manifold=True):
 	faces_CW, faces_CCW = face_cycles(P)
-	P_dual_V, P_dual_E = face_dual(P)
+	P_dual_V, P_dual_E = face_dual(P, manifold)
 
 	P_G = {}
 	for v in P_dual_V:
@@ -362,17 +394,22 @@ def is_unfolding(P, U):
 	return False
 	
 # Input: a polycube represented as a set of integer 3-tuples
+# Optional input: whether the unfoldings should be strongly simple, Hamiltonian, whether the polycube is a manifold, whether the unfoldings should be zipper unfoldings.
 # Output: a generator of the boundary words of the polycube's unfoldings 
-def unfoldings(P, strongly_simple=False, hamiltonian=False):
-	faces_CW, faces_CCW = face_cycles(P)
-	faces_V, faces_E = face_dual(P)
+def unfoldings(P, strongly_simple=False, path=False, manifold=True, zipper=False):
 
-	rem_E = sorted(list(faces_E)) # Sort to bias towards "filling out" along X-axis?
+	faces_CW, faces_CCW = face_cycles(P)
+	faces_V, faces_E = face_dual(P, manifold)
+
+	# The edges left to process in the DFS 
+	proc_E = sorted(list(faces_E)) # Sort to bias towards "filling out" along X-axis?
+
 	# Initialize graph of partial unfolding tree
 	G_pT = {}
 	for v in faces_V:
 		G_pT[v] = set([])
-	# Initialize face dual graph of rest of surface 
+
+	# The face dual subgraph containing the edges that *could* still be in the unfolding's face dual graph
 	G_T_rem_E = {}
 	for v in faces_V:
 		G_T_rem_E[v] = set([])
@@ -381,62 +418,78 @@ def unfoldings(P, strongly_simple=False, hamiltonian=False):
 				G_T_rem_E[v].add(e[1])
 			if v == e[1]:
 				G_T_rem_E[v].add(e[0])
-	
-	def tree_to_boundary_word():
+
+	def tree_to_boundary_word(zipper):
 		if sum([len(v) for v in G_pT.values()]) < 2:
 			return ['N', 'E', 'S', 'W']
 	
-		start_e = '?'
-		cur_v = '?' 
+		cur_e = '?'
+		cur_v = '?'
 		for v in G_pT:
-			# Find a face edge of a vertex in pT that 
-			# borders another face not adjacent in pT
+			# Find a leaf in the partial tree
 			if len(G_pT[v]) != 1:
 				continue
-			start_v = v
+			cur_v = v
+			# Find a (bordering) edge of this leaf (face) that isn't incident to the neighbor of the leaf 
+			v_nei = min(G_pT[v])
 			for e in faces_CW[v]:
-				if not (e in faces_CCW[min(G_pT[v])]) and not (faces_CW[v][e] in faces_CCW[min(G_pT[v])]):
-					start_e = e
+				if not (e in faces_CCW[v_nei]):
+					cur_e = e
 			break	
+			
+		W = ['W']
+		W_edges = [cur_e]
+		cur_d = 'W'
+		cur_e = faces_CW[cur_v][cur_e]
 
-		W = [polyomino.cw['S']]
-		W_edges = [start_e]
-		cur_v = start_v
-		cur_d = polyomino.cw['S']
-		cur_e = faces_CW[cur_v][start_e]
-		while (cur_e, cur_v) != (start_e, start_v):
+		G_pT_edge_count = sum([len(v) for v in G_pT.values()])/2
+		BW_edge_count = 2*G_pT_edge_count + 4
+
+		while (len(W) < BW_edge_count):
 			edge2neigh_v = {}
 			for neigh_v in G_pT[cur_v]:
 				edge2neigh_v[min(set(faces_CCW[neigh_v]) & set(faces_CW[cur_v]))] = neigh_v	
-			if cur_e in edge2neigh_v: # Not an edge of tree's boundary
+			if cur_e in edge2neigh_v: # cur_e is not an edge of tree's boundary
 				# Move to the adjoining cell
 				cur_v = edge2neigh_v[cur_e]
-				cur_e = faces_CW[cur_v][(cur_e[1], cur_e[0])]
 				cur_d = polyomino.cw[polyomino.comp[cur_d]]
-			else:	# An edge of the tree's boundary
+				cur_e = faces_CW[cur_v][cur_e[::-1]]
+			else:	# cur_e is an edge of the tree's boundary
 				# Add the current edge to the boundary word
 				W.append(polyomino.cw[cur_d])
 				W_edges.append(cur_e)
 				cur_d = polyomino.cw[cur_d]
 				cur_e = faces_CW[cur_v][cur_e]
+
 		# Glue coincident edges back together	
 		welded = False
 		while not welded:
 			welded = True
 			for i in xrange(len(W)-1):
-				if W[i] == polyomino.comp[W[i+1]] and W_edges[i][0] == W_edges[i+1][1] and W_edges[i][1] == W_edges[i+1][0]:
+				if W[i] == polyomino.comp[W[i+1]] and W_edges[i] == W_edges[i+1][::-1]:
 					del W[i+1] 
 					del W_edges[i+1]
 					del W[i]
 					del W_edges[i]
 					welded = False
 					break
-			if W[0] == polyomino.comp[W[-1]] and W_edges[0][0] == W_edges[-1][1] and W_edges[0][1] == W_edges[-1][0]:
+			if W[0] == polyomino.comp[W[-1]] and W_edges[0] == W_edges[-1][::-1]:
 				del W[-1]
 				del W_edges[-1]
 				del W[0]
 				del W_edges[0]
 				welded = False
+
+		# If consecutive complementary (on the polycube) edges aren't welded,
+		# then this is a permanent leaf 
+		if zipper:
+			leaf_count = 0
+			for i in xrange(-1, len(W_edges)-1):
+				if (W_edges[i] == W_edges[i+1][::-1]):
+					leaf_count = leaf_count + 1
+					if leaf_count > 2:
+						return None
+
 		return W
 
 	def skipped_count():
@@ -455,17 +508,21 @@ def unfoldings(P, strongly_simple=False, hamiltonian=False):
 
 	stats = [0, 0]
 	def recurse():
-		#sys.stdout.write("\rProgress: " + str(stats[0]+stats[1]) + " (" + str(stats[0]) + ") / " + str(total_unfoldings))
-		#sys.stdout.flush()
 		pT_edge_count = sum([len(G_pT[v]) for v in G_pT]) / 2
-		# If the number of edges is right
+		if (pT_edge_count > len(G_pT)/2):
+			sys.stdout.write("\rProgress: " + str(stats[0]+stats[1]) + " (" + str(stats[0]) + ") / " + str(total_unfoldings))
+
+		# If the number of edges is correct for a tree
 		if pT_edge_count == len(faces_V) - 1:
+			result = tree_to_boundary_word(zipper)
 			stats[0] = stats[0] + 1
-			yield tree_to_boundary_word()
+			yield result
 			return
+
 		# If there aren't enough edges left to make a tree
-		if len(rem_E) + pT_edge_count < len(faces_V) - 1:
+		if len(proc_E) + pT_edge_count < len(faces_V) - 1:
 			return
+
 		# Adversarily decide on an edge b to branch on.
 		# Look for one that kills one or both(!) of the two branches.
 		branch1_killer = '?' # Exclusion is impossible
@@ -473,14 +530,18 @@ def unfoldings(P, strongly_simple=False, hamiltonian=False):
 
 		# Assumes pb has already been added to G_pT
 		def kills_branch2(pb):
+			# Branch killer 2: T has a cycle, a nonplanar unfolding, 
+			# or does not satisfy other specifics (Hamiltonicity, zipper)
 			if has_cycle(G_pT, pb[0]):
 				return True
-			BW = tree_to_boundary_word()
+			BW = tree_to_boundary_word(zipper) 
+			if BW == None:
+				return True
 			if strongly_simple and not polyomino.is_simple(BW):
 				return True
-			if not polyomino.is_weakly_simple(tree_to_boundary_word()):
+			if not polyomino.is_weakly_simple(BW):
 				return True
-			if hamiltonian:
+			if path:
 				# If the partial tree is not a path
 				if len(filter(lambda v: len(G_pT[v]) > 2, G_pT.keys())) > 0:
 					return True
@@ -490,10 +551,11 @@ def unfoldings(P, strongly_simple=False, hamiltonian=False):
 					return True
 			return False			
 
-		for pb in rem_E:
-			# These must necessarily be connected to existing partial tree
+		for pb in proc_E:
+			# Requirement: must be connected to existing partial tree
 			if len(G_pT[pb[0]]) + len(G_pT[pb[1]]) == 0:
 				continue
+
 			G_T_rem_E[pb[0]].remove(pb[1])
 			G_T_rem_E[pb[1]].remove(pb[0])
 			if not is_connected(G_T_rem_E):
@@ -518,41 +580,41 @@ def unfoldings(P, strongly_simple=False, hamiltonian=False):
 			b = branch2_killer
 		elif branch1_killer != '?':
 			b = branch1_killer
-		# If neither branch can be killed, pick something
-		# that's connected to the partial tree that's growing
+		# If neither branch can be killed
 		if b == '?':
-			if pT_edge_count == 0: 
-				b = random.choice(rem_E) 
+			# Pick something that's connected to the partial tree that's growing
+			if pT_edge_count > 0: 
+				b = random.choice(filter(lambda e: len(G_pT[e[0]]) + len(G_pT[e[1]]) > 0, proc_E))
+			# Otherwise just pick something
 			else:
-				b = random.choice(filter(lambda e: len(G_pT[e[0]]) + len(G_pT[e[1]]) > 0, rem_E))
-		rem_E.remove(b)
-	
+				b = random.choice(proc_E) 
+		proc_E.remove(b)
+
 		# Recursion branch 1: b is not included. 
 		# Recurse with slightly smaller remaining edge set.
 		G_T_rem_E[b[0]].remove(b[1])
 		G_T_rem_E[b[1]].remove(b[0])
-		# Branch killer 1: cannot possibly finish a (connected) tree?
 		if is_connected(G_T_rem_E): 
 			for W in recurse():
 				yield W
 		G_T_rem_E[b[0]].add(b[1])
 		G_T_rem_E[b[1]].add(b[0])
+
 		# Recursion branch 2: b is included.
 		# Recurse with slightly smaller remaining edge set and tree
 		G_pT[b[0]].add(b[1])
 		G_pT[b[1]].add(b[0])
-		# Branch killer 2: T has a cycles, a nonplanar unfolding, 
-		# or is not a path when supposed to be Hamiltonian? 
-		if not has_cycle(G_pT, b[0]):
+		if not has_cycle(G_pT, b[0]): # Check this first to keep skipped_count() happy
 			if kills_branch2(b):
 				stats[1] = stats[1] + skipped_count()
 			else:
 				for W in recurse():
 					yield W
-		# Restore variables
 		G_pT[b[0]].remove(b[1])
 		G_pT[b[1]].remove(b[0])
-		rem_E.append(b)
+
+		proc_E.append(b)
+
 
 	total_unfoldings = spanning_tree_count(G_T_rem_E)
 	for W in recurse():
@@ -650,7 +712,7 @@ def enumerate_polycubes_with_area(area):
 class TestStuff(unittest.TestCase):
 	
 	def setUp(self):
-		pass
+		random.seed(1)
 
 	def test__surface_area(self):
 		self.assertEqual(6, surface_area(set([(0, 0, 0)])))
@@ -666,15 +728,52 @@ class TestStuff(unittest.TestCase):
 	def test__unfoldings(self):
 		# All unfoldings of cube tile
 		count = 0
-		for uf in unfoldings(set([(0, 0, 0)])):
+		for uf in unfoldings(set([(0, 0, 0)]), strongly_simple=False, path=False, manifold=True, zipper=False):
 			count = count + 1
 			self.assertTrue(polyomino.is_polyomino(uf))
 			self.assertTrue(isohedral.has_translation_tiling(uf) or isohedral.has_half_turn_tiling(uf))
 		self.assertEqual(count, 384) # 384 = ((2*1)**3 * (2*2)**3 * (2*3)**1) / 8 
 
-		# Lean on fact that every Hamiltonian unfolding has maximum boundary 
-		for uf in unfoldings(set([(0, 0, 0)]), False, True):
+		# Path unfoldings (test that perimeter is correct)
+		for uf in unfoldings(set([(0, 0, 0)]), strongly_simple=False, path=True, manifold=True, zipper=False):
 			self.assertTrue(len(uf) == 2 + 2 * surface_area(set([(0, 0, 0)])))
+
+		# Zipper unfoldings (test that the set of boundary words has correct size)
+		UF = set([])	
+		for uf in unfoldings(set([(0, 0, 0)]), strongly_simple=False, path=False, manifold=True, zipper=True):
+			rots = []
+			for a in [0, 90, 180, 270]:
+				rots.append(polyomino.normalize_rotation([polyomino.rot[a][l] for l in uf]))
+				rots.append(polyomino.normalize_rotation([polyomino.comp[polyomino.rot[a][polyomino.refl[0][l]]] for l in uf[::-1]]))
+
+			rots_s = ["".join(w) for w in rots]
+
+			if len(filter(lambda s: s in UF, rots_s)) == 0:
+				UF.add(rots_s[0])
+
+		# Expect to get the size of the subset of 11 cube unfoldings that are zipper unfoldings.
+		# For cube unfoldings, convex corners must be leaves of cut tree.
+		# 
+		# O    O 
+		# OOOO OOOO   OOO  are zipper unfoldings
+		#    O O    OOO
+		#
+		#  O   OO      O   O   O     O  O    O
+		# OOOO  OO   OOO  OOO  OOO OOOO OOOO OOOO  are not zipper unfoldings 
+		#  O     OO OO   OO   OO    O     O   O
+		# 
+
+		for U in UF:
+			leaf_count_lb = 0
+			for i in xrange(-2, len(U)-2):
+				if ([U[i], U[i+1]] == ['N', 'W'] 
+					or [U[i], U[i+1]] == ['E', 'N'] 
+					or [U[i], U[i+1]] == ['S', 'E'] 
+					or [U[i], U[i+1]] == ['W', 'S']):
+					leaf_count_lb = leaf_count_lb + 1
+			self.assertLess(leaf_count_lb, 3)
+
+		self.assertEqual(len(UF), 3) 
 
 	def test__unfolding_count(self):
 		self.assertEqual(unfolding_count(set([(0, 0, 0)])), ((2*1)**3 * (2*2)**3 * (2*3)**1) / 8)
